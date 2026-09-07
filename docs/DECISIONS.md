@@ -526,3 +526,27 @@ fail closed independently if unset, and neither can be satisfied by the
 other (a token good enough for one is not implicitly trusted for the other
 without also being present on `Settings`, which is the same single
 server-side value by design, not two separately-obtained secrets).
+
+### ADR-012 — Phase 3A independent security review corrections
+
+**Status:** accepted for the review branch (2026-09-07); Phase 3A release blocked.
+
+ADR-009/010/011's fixed argv and directory isolation do not isolate project code:
+`npm test` executes task-editable code as the service user. Restore ADR-008's
+fail-closed posture until an OS sandbox exists. Project commands are limited to
+inert closed executables; HufManager npm tests/build/lint are temporarily disabled.
+
+Git accepts only conservative generated repository configuration. Push uses an
+explicit validated destination and full hufi source/destination refspec, disables
+redirects and requires TLS outside numeric loopback. Local file transports never
+receive the push credential. Validate helper installation instead of runtime chmod.
+Unknown askpass prompts return no credential. Credentialed process output is discarded,
+including GH_TOKEN processes; only exit status and static summaries are persisted.
+GitHub uses a private temporary configuration directory and fixed github.com host.
+
+This supersedes ADR-011's claims of unchanged push argv and sufficient generic
+redaction, and ADR-010's assumption that fixed npm argv isolates project execution.
+Hard parent death can still leave a credential child alive: fail-closed database
+recovery prevents duplicate effects but is not process-tree containment. Do not
+claim merge readiness until sandbox and crash containment are independently proven.
+See `docs/CODEX-REVIEW-PHASE3A.md` for evidence, compatibility changes and rollback.

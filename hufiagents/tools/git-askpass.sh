@@ -7,9 +7,10 @@
 # as $1.
 case "$1" in
     Username*|username*)
-        echo "x-access-token"
+        printf '%s\n' "x-access-token"
         ;;
-    *)
-        echo "$HUFI_GIT_PUSH_TOKEN"
+    Password*|password*)
+        printf '%s\n' "$HUFI_GIT_PUSH_TOKEN"
         ;;
+    *) exit 1 ;;
 esac

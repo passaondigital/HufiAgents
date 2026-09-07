@@ -41,6 +41,10 @@ class ShellTool:
             argv = getattr(self.project, PROJECT_ACTIONS[call.action])
             if not argv:
                 raise PermissionError(f"{call.action} is not configured for this project")
+            # A fixed npm argv still executes task-editable package scripts.
+            # Until an OS sandbox exists, permit only inert closed executables.
+            if argv[:1] != ["/bin/echo"] and argv not in list(COMMANDS.values()):
+                raise PermissionError("project code execution requires an OS sandbox")
             return await run_process(argv, self.workspace, call, self.project_timeout)
         if risk != Risk.R0:
             raise PermissionError("arbitrary shell disabled until an OS sandbox is provided")

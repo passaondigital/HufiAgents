@@ -79,7 +79,7 @@ async def test_wrong_token_fails_without_leaking_it(tmp_path):
     assert result.result_status == "error"
     assert TOKEN not in result.result_summary
     assert WRONG_TOKEN not in result.result_summary
-    assert "Authentication failed" in result.result_summary
+    assert result.result_summary == "credentialed subprocess failed (output suppressed)"
 
 
 async def test_correct_token_pushes_for_real_through_git_askpass(tmp_path):

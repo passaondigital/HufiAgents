@@ -1,8 +1,10 @@
 import os
 import re
+import stat
 from pathlib import Path
 
 from hufiagents.contracts import Risk
+from hufiagents.tools.git_security import validate_metadata, validate_remote
 from hufiagents.tools.process import run_process
 
 HUFI_BRANCH = re.compile(r"hufi/[a-zA-Z0-9_-]{1,80}")
@@ -64,20 +66,8 @@ class GitTool:
         }:
             raise PermissionError("external or destructive git operation disabled in V1")
         metadata = self.workspace.root / ".git"
-        if metadata.exists():
-            if metadata.is_symlink() or not metadata.is_dir():
-                raise PermissionError("external Git directory forbidden")
-            for entry in metadata.rglob("*"):
-                if entry.is_symlink():
-                    raise PermissionError("Git metadata symlinks forbidden")
-            config = metadata / "config"
-            if config.exists():
-                text = config.read_text().lower()
-                if any(
-                    word in text
-                    for word in ["include", "filter", "fsmonitor", "worktree", "sshcommand"]
-                ):
-                    raise PermissionError("unsafe Git configuration")
+        if metadata.exists() or metadata.is_symlink():
+            validate_metadata(self.workspace.root)
         elif action not in {"init", "clone"}:
             raise PermissionError("Git operates only on its own workspace repository")
         argv = [
@@ -103,7 +93,8 @@ class GitTool:
             # Any caller-supplied params are ignored entirely: only the
             # registry's repo_url can ever be cloned, so a task can never
             # fetch from an attacker-chosen source (docs/DECISIONS.md ADR-010).
-            argv += ["clone", "--single-branch", "--", self.project.repo_url, "."]
+            validate_remote(self.project.repo_url)
+            argv += ["clone", "--no-hardlinks", "--single-branch", "--", self.project.repo_url, "."]
             return await run_process(argv, self.workspace, call, self.clone_timeout)
         elif action == "status":
             argv += ["status", "--short"]
@@ -136,16 +127,20 @@ class GitTool:
             # Any caller-supplied params are ignored entirely: only the
             # server-configured remote can ever be wired in, so a task can
             # never redirect a push destination.
+            validate_remote(self.remote_url)
             argv += ["remote", "add", "origin", self.remote_url]
         else:
             target_remote = self.project.repo_url if self.project else self.remote_url
             if not target_remote:
                 raise PermissionError("no git remote configured; set HUFI_GIT_REMOTE_URL")
+            protocol = validate_remote(target_remote)
             origin = await self._origin_url(call)
             if origin != target_remote:
                 raise PermissionError("origin does not match the configured/allowlisted remote")
             branch = await self._current_branch(call)
-            if not HUFI_BRANCH.fullmatch(branch):
+            if not HUFI_BRANCH.fullmatch(branch) or (
+                self.project and branch == self.project.default_branch
+            ):
                 raise PermissionError("refusing to push a non-hufi/ or detached branch")
             if self.dry_run:
                 return call.model_copy(
@@ -155,19 +150,43 @@ class GitTool:
                         "result_summary": f"dry-run: push of {branch} to {origin} skipped",
                     }
                 )
-            # Fail closed before spawning anything if no push credential is
+            # Fail closed before spawning the push if no push credential is
             # configured (docs/DECISIONS.md ADR-011). The token never touches
             # argv/git config/the remote URL -- only this one subprocess's
             # env, via a static, secret-free GIT_ASKPASS helper.
             if not self.push_token:
                 raise PermissionError("no push credential configured; set HUFI_GITHUB_TOKEN")
-            if not os.access(ASKPASS_SCRIPT, os.X_OK):
-                os.chmod(ASKPASS_SCRIPT, 0o755)
-            extra_env = {
-                "GIT_ASKPASS": str(ASKPASS_SCRIPT),
-                "HUFI_GIT_PUSH_TOKEN": self.push_token,
-            }
-            argv += ["push", "--set-upstream", "origin", branch]
+            if protocol != "file":
+                info = ASKPASS_SCRIPT.lstat()
+                if (
+                    not stat.S_ISREG(info.st_mode)
+                    or info.st_mode & 0o022
+                    or not os.access(ASKPASS_SCRIPT, os.X_OK)
+                    or info.st_nlink != 1
+                ):
+                    raise PermissionError("unsafe askpass installation")
+                extra_env = {
+                    "GIT_ASKPASS": str(ASKPASS_SCRIPT),
+                    "HUFI_GIT_PUSH_TOKEN": self.push_token,
+                }
+            # An explicit destination and full refspec avoid remote pushurl,
+            # configured refspecs and upstream inference. No force or tags.
+            argv += [
+                "-c",
+                "http.followRedirects=false",
+                "-c",
+                "http.sslVerify=true",
+                "-c",
+                "protocol.allow=never",
+                "-c",
+                f"protocol.{protocol}.allow=always",
+                "push",
+                "--no-verify",
+                "--recurse-submodules=no",
+                "--",
+                target_remote,
+                f"refs/heads/{branch}:refs/heads/{branch}",
+            ]
         return await run_process(argv, self.workspace, call, self.timeout, extra_env=extra_env)
 
     async def _require_unprotected_branch(self, call):
@@ -175,7 +194,7 @@ class GitTool:
         protected = {"main", "master"}
         if self.project:
             protected.add(self.project.default_branch)
-        if branch in protected:
+        if branch in protected or not HUFI_BRANCH.fullmatch(branch):
             raise PermissionError("switch to a hufi/ branch before making changes")
 
     async def _current_branch(self, call):

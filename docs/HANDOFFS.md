@@ -337,3 +337,21 @@ Acceptance criteria: task instructions' 11-point checklist -- ADR-011 written (i
   exactly why, not fabricated), same PR #3 continued rather than a new one (item 9),
   ruff/tests/build all green (item 10).
 ```
+
+## 2026-09-07 — Codex independent Phase 3A security review
+
+Base: PR #3 / f65bcbd2733bd2a17b01da3a6eb8eeccdf6ed344.
+Branch: codex/review-phase3a-auth (separate worktree).
+Independent negative tests reproduced foreign pushurl credential routing and
+persistable credential output before fixes. Added strict Git config/transport/ref
+validation, output suppression, helper checks, isolated gh configuration and
+fail-closed project code execution. Real loopback Basic Auth rejects wrong tokens
+and accepts correct tokens, including an installed wheel. Real HufManager clone,
+local doc commit, reviewer and dry-run push/PR completed with deterministic provider.
+Full evidence and reproduction commands: docs/CODEX-REVIEW-PHASE3A.md.
+
+Decision: MERGE READY = NO. Package-code OS isolation and hard-crash process-tree
+containment remain required; HufManager test/build/lint are intentionally blocked.
+No production modifications, real secrets, HufManager push or external PR creation.
+Rollback: revert review commit only if push/PR and project-code execution remain
+disabled; do not restore the vulnerable credential path as an operational rollback.

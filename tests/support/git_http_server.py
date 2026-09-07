@@ -6,7 +6,6 @@ a real GitHub repo. Test-only; not shipped with the package."""
 
 import base64
 import http.server
-import os
 import socketserver
 import subprocess
 import threading
@@ -43,7 +42,8 @@ class _AuthedBackendHandler(http.server.BaseHTTPRequestHandler):
         request_body = self.rfile.read(length) if length else b""
         path_info, _, query = self.path.partition("?")
         env = {
-            **os.environ,
+            "PATH": "/usr/bin:/bin",
+            "LANG": "C.UTF-8",
             "GIT_PROJECT_ROOT": str(self.project_root),
             "GIT_HTTP_EXPORT_ALL": "1",
             "PATH_INFO": path_info,

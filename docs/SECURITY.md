@@ -83,3 +83,15 @@ Mitigations include:
 ## Public repository warning
 
 `passaondigital/HufiAgents` is currently public. Real hostnames may be documented only if intentionally public; never include credentials, tokens, private keys, customer data or confidential infrastructure details.
+
+## Phase 3A review gate
+
+Project package scripts are disabled until an OS sandbox separates task code from
+service credentials and installation files (ADR-012). A fixed npm command is not
+an execution sandbox. Push/PR output from credentialed processes is suppressed,
+rather than relying on regexes to recognize unknown/encoded secrets. Install the
+secret-free askpass helper with 0755 permissions using a trusted, non-task-writable
+installation; invalid permissions fail closed and are never repaired at runtime.
+Hard service crashes additionally require verified process-tree containment;
+SQLite recovery alone does not kill orphaned Git processes. Phase 3A is not yet
+merge-ready; see `CODEX-REVIEW-PHASE3A.md`.

@@ -1,6 +1,8 @@
 import re
+from tempfile import TemporaryDirectory
 
 from hufiagents.contracts import Risk
+from hufiagents.tools.git_security import validate_metadata
 from hufiagents.tools.process import run_process
 
 HUFI_BRANCH = re.compile(r"hufi/[a-zA-Z0-9_-]{1,80}")
@@ -34,8 +36,11 @@ class GitHubTool:
             raise PermissionError("GitHub integration not configured")
         if not self.token and not self.dry_run:
             raise PermissionError("GitHub integration not configured")
+        if not re.fullmatch(r"[a-zA-Z0-9_-]+/[a-zA-Z0-9_.-]+", self.repo):
+            raise PermissionError("invalid configured GitHub repository")
+        validate_metadata(self.workspace.root)
         branch = await self._current_branch(call)
-        if not HUFI_BRANCH.fullmatch(branch):
+        if not HUFI_BRANCH.fullmatch(branch) or branch == self.base_branch:
             raise PermissionError("refusing to open a PR from a non-hufi/ or detached branch")
         title = call.params.get("title") or f"HufiAgents: {branch}"
         body = call.params.get("body") or "Opened by HufiAgents (draft, review required)."
@@ -68,13 +73,20 @@ class GitHubTool:
             body,
             "--draft",
         ]
-        return await run_process(
-            argv,
-            self.workspace,
-            call,
-            self.timeout,
-            extra_env={"GH_TOKEN": self.token, "GH_PROMPT_DISABLED": "1", "NO_COLOR": "1"},
-        )
+        with TemporaryDirectory(prefix="hufi-gh-") as config_dir:
+            return await run_process(
+                argv,
+                self.workspace,
+                call,
+                self.timeout,
+                extra_env={
+                    "GH_TOKEN": self.token,
+                    "GH_PROMPT_DISABLED": "1",
+                    "NO_COLOR": "1",
+                    "GH_CONFIG_DIR": config_dir,
+                    "GH_HOST": "github.com",
+                },
+            )
 
     async def _current_branch(self, call):
         result = await run_process(

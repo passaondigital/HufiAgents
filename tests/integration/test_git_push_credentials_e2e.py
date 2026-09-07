@@ -120,6 +120,7 @@ async def test_integrator_pushes_through_real_http_auth_and_leaves_no_trace_of_t
         assert TOKEN not in c.result_summary
     assert reviews and reviews[0].verdict == "approve"
     store.close()
+    assert TOKEN.encode() not in (tmp_path / "db.sqlite3").read_bytes()
 
 
 async def test_missing_token_fails_the_mission_closed_not_open(tmp_path):
@@ -158,3 +159,68 @@ async def test_missing_token_fails_the_mission_closed_not_open(tmp_path):
         settled = await settle(engine, mission.id)
     assert settled.status == State.failed
     store.close()
+
+
+async def test_restart_after_remote_effect_does_not_repeat_push(tmp_path, monkeypatch):
+    from hufiagents.tools.git import GitTool
+
+    root = tmp_path / "http"
+    root.mkdir()
+    bare = make_bare_http_repo(root)
+    effected = asyncio.Event()
+    pushes = 0
+    original = GitTool.execute
+
+    async def pause_after_push(self, call):
+        nonlocal pushes
+        result = await original(self, call)
+        if call.action == "push":
+            assert result.exit_code == 0
+            pushes += 1
+            effected.set()
+            await asyncio.Event().wait()  # crash window before durable tool result
+        return result
+
+    monkeypatch.setattr(GitTool, "execute", pause_after_push)
+    with basic_auth_git_server(root, username=USERNAME, password=TOKEN) as url:
+        store, engine = setup(tmp_path, github_token=TOKEN, git_remote_url=f"{url}/repo.git")
+        mission = engine.submit(
+            MissionCreate(
+                outcome="recovery",
+                risk_ceiling="R2",
+                steps=[
+                    TaskSpec(
+                        objective="recover push",
+                        agent_id="integrator",
+                        allowed_tools=["files", "git"],
+                        operations=[
+                            {"tool": "git", "action": "init"},
+                            {
+                                "tool": "files",
+                                "action": "write_file",
+                                "target": "note.md",
+                                "params": {"content": "hello"},
+                            },
+                            {"tool": "git", "action": "add", "params": {"path": "note.md"}},
+                            {"tool": "git", "action": "commit"},
+                            {"tool": "git", "action": "remote_add"},
+                            {"tool": "git", "action": "push"},
+                        ],
+                    )
+                ],
+            )
+        )
+        await engine.tick()
+        await asyncio.wait_for(effected.wait(), 10)
+        await engine.stop()
+        store.close()
+        await asyncio.sleep(0.15)
+        store, restarted = setup(tmp_path, github_token=TOKEN, git_remote_url=f"{url}/repo.git")
+        restarted.recover()
+        settled = await settle(restarted, mission.id)
+        assert settled.status == State.failed
+        assert pushes == 1
+        await restarted.stop()
+        store.close()
+    refs = subprocess.run(["git", "--git-dir", str(bare), "show-ref"], capture_output=True)
+    assert refs.returncode == 0  # the first effect really happened
