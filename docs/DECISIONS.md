@@ -285,3 +285,64 @@ made exactly-once by a database key alone. Unknown effects fail closed for
 manual reconciliation; create-only files may reconcile identical content.
 Already successful tool results are reused. Audit detail is redacted, and
 model payloads remain task context rather than raw audit text.
+
+### ADR-009 — Git push / GitHub PR workflow: a new `integrator` agent, not a
+### capability raise on `builder`
+
+**Status:** accepted (2026-09-07)
+
+**Context**
+
+`docs/ROADMAP.md` Phase 2 requires git push and a GitHub PR workflow.
+`tools/git.py` (V1) hard-disabled `push` and any GitHub tool did not exist;
+`docs/CORE-V1.md` explicitly relied on this: "the shipped builder has ceiling
+R1, so no dangerous operation can enter its execution path." `git.push` is
+already classified R2 (`docs/ARCHITECTURE.md` Sec8), and PR creation is R1/R2
+per Sec6.4/`docs/HANDOFF-CODEX-V1.md`. Both need a real executor now.
+
+**Decision**
+
+Implement `GitTool.push`/`GitTool.remote_add` and a new `GitHubTool.open_pr`
+(`gh pr create --draft` only). Add both to `config/risk_policy.yaml`'s
+`r2_auto_allow` (the architecture's documented mechanism for "R2, automatic
+only when policy explicitly allows it" — no change to `ToolGateway`'s R2
+logic itself). Add a new Agent Registry entry, `integrator`
+(`default_risk_ceiling=R2`, `tools=[files,shell,git,github]`), instead of
+raising `builder`'s ceiling. A task opts in via the new
+`TaskSpec.agent_id`/`Task.assigned_agent_id` field (defaults to `None` ->
+`"builder"`, unchanged from V1's hardcoded assignment, validated against the
+registry at `submit()` time). The remote URL, GitHub repo, base branch and
+token are `Settings` fields only (`HUFI_GIT_REMOTE_URL`, `HUFI_GITHUB_REPO`,
+`HUFI_GITHUB_BASE_BRANCH`, `HUFI_GITHUB_TOKEN`), all empty/disabled by
+default; `GitTool`/`GitHubTool` never read a caller-supplied remote/repo/token
+from `call.params` — only the server config. `GH_TOKEN` is injected as
+subprocess env only (never persisted, never the host's own logged-in `gh`
+session — `run_process`'s isolated env, including its `HOME` override, is
+unchanged, so `~/.config/gh/hosts.yml` is never read). Push/PR both hard
+-require the current branch to match `hufi/[a-zA-Z0-9_-]{1,80}`; merge/close/
+repo-settings stay unimplemented (R3, no executor, matching the shell/git R3
+posture from ADR-008).
+
+**Why**
+
+`docs/CORE-V1.md`'s stated security property ("no dangerous operation can
+enter `builder`'s execution path") is a specific, tested claim about one
+named agent. Raising `builder`'s ceiling would silently invalidate that claim
+for every existing/future task that doesn't ask for push/PR, since ceiling is
+a hard cap independent of task risk_ceiling. A new, separately-scoped agent
+is additive: `builder`'s behavior and tests are provably unchanged (verified:
+`test_builder_agent_cannot_push_even_with_remote_configured`), and the new
+capability is only reachable by a task that explicitly names `integrator`.
+Keeping remote/repo/token server-side-only, never caller-supplied, closes the
+obvious alternative attack: a task/mission body cannot redirect a push or PR
+to an attacker-chosen destination even once `integrator` is used.
+
+**Consequences**
+
+Push/PR remain fully inert (`PermissionError`) until Pascal explicitly
+configures `HUFI_GIT_REMOTE_URL` and/or `HUFI_GITHUB_REPO`+`HUFI_GITHUB_TOKEN`
+locally (never committed — `.env.example` keeps placeholders only, per
+`docs/SECURITY.md`). Any future agent that should be allowed to push/open PRs
+reuses the same `integrator` role or gets its own new registry entry with an
+explicit ceiling — `builder`'s R1 boundary is not the place to special-case
+this. See `docs/PHASE2-GIT-PR-WORKFLOW.md` for the operator-facing runbook.

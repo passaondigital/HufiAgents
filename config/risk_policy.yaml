@@ -1,2 +1,9 @@
-# No external side effects are automatically approved in the shipped profile.
-r2_auto_allow: []
+# External side effects require explicit listing here (docs/ARCHITECTURE.md
+# Sec8: "R2 ... automatic only when policy explicitly allows it"). Both entries
+# below are still gated by the acting agent's default_risk_ceiling (only the
+# `integrator` agent has R2; the shipped `builder` agent stays R1 and is denied
+# regardless of this list) and by GitTool/GitHubTool always using a
+# server-configured remote/repo/token, never a caller-supplied one.
+r2_auto_allow:
+  - git.push
+  - github.open_pr

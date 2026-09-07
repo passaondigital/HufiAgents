@@ -1,4 +1,4 @@
-from hufiagents.contracts import Agent
+from hufiagents.contracts import Agent, Risk
 
 
 class AgentRegistry:
@@ -19,6 +19,18 @@ class AgentRegistry:
                 id="reviewer",
                 role="Independent mechanical acceptance reviewer",
                 capabilities={"tools": ["files"], "providers": []},
+            ),
+            # R2 ceiling, opt-in per task (Planner/TaskSpec.agent_id). `builder`
+            # keeps its existing R1 ceiling unchanged -- this is an additive
+            # capability, not an expansion of the shipped default agent.
+            Agent(
+                id="integrator",
+                role="Bounded git push / draft-PR workflow",
+                capabilities={
+                    "tools": ["files", "shell", "git", "github"],
+                    "providers": ["fake", "hufi-local-router", "ollama"],
+                },
+                default_risk_ceiling=Risk.R2,
             ),
         ]
         with self.store.transaction() as tx:

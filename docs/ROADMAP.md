@@ -53,7 +53,13 @@ run against the live `hufi-local-router`. State survives a process restart
 - Git worktree/branch automation.
 - Builder + reviewer agents.
 - Test/CI integration.
-- GitHub PR workflow.
+- GitHub PR workflow. **Push + draft-PR mechanics done** — see
+  `docs/DECISIONS.md` ADR-009 and `docs/PHASE2-GIT-PR-WORKFLOW.md`: real
+  `git push`/`GitHubTool.open_pr`, gated behind a new `integrator` agent
+  (R2), server-configured remote/repo/token only. Not yet done: cloning an
+  existing external repository into a mission workspace (needed before this
+  can act on a real project's existing code, not just a fresh workspace
+  repo) — left for the HufManager connector below to avoid overlap.
 - HufManager as first real project connector/use case.
 
 **Exit:** HufiAgents can complete a bounded real repository task and prepare a verified PR.

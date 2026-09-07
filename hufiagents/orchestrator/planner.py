@@ -21,6 +21,7 @@ class TaskSpec(Contract):
         default_factory=lambda: [{"type": "nonempty"}, {"type": "file_exists"}]
     )
     allowed_tools: list[str] = Field(default_factory=lambda: ["files"])
+    agent_id: str | None = None
     preferred_provider: str | None = None
     retry_limit: int = Field(2, ge=0, le=5)
     budget_seconds: int = Field(300, ge=1, le=3600)
@@ -56,7 +57,8 @@ class Planner:
             task = Task(
                 mission_id=mission.id,
                 risk_ceiling=request.risk_ceiling,
-                **spec.model_dump(exclude={"operations"}),
+                assigned_agent_id=spec.agent_id,
+                **spec.model_dump(exclude={"operations", "agent_id"}),
             )
             if tasks:
                 task.dependencies = [tasks[-1][0].id]
