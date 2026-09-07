@@ -236,8 +236,8 @@ for why this session still could not supply one for `passaondigital/hufmanager`.
 The historical verification above is superseded by `CODEX-REVIEW-PHASE3A.md` and
 ADR-012. Fetch-origin comparison alone did not constrain pushurl; fixed npm argv
 was not a sandbox; generic regex redaction did not protect opaque echoed tokens.
-The review branch fixes those paths and intentionally disables npm project
-commands until an OS sandbox exists. A fresh real clone/documentation commit and
-two-stage reviewer/dry-run-push/PR mission succeeded independently. Real project
-test/build/lint remain blocked, and hard parent death can leave credentialed
-children alive. **MERGE READY = NO.** No real HufManager push or PR was attempted.
+ADR-013 now runs npm commands only in a verified Bubblewrap boundary and contains
+credential process descendants on hard parent death. A fresh real clone/documentation
+commit and two-stage reviewer/dry-run-push/PR mission succeeded independently. No real
+HufManager push or PR was attempted. Actual test/build/lint status is recorded in the
+Phase 3A review; dependency installation is not performed outside the netless sandbox.

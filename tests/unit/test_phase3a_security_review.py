@@ -2,6 +2,7 @@
 
 import base64
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -125,7 +126,10 @@ async def test_task_and_parent_cannot_inject_push_environment(tmp_path, monkeypa
         assert "HUFI_GITHUB_TOKEN" not in env
         assert "GIT_CONFIG_COUNT" not in env
         if has_secret:
-            assert env["GIT_ASKPASS"] == str(ASKPASS_SCRIPT)
+            helper = Path(env["GIT_ASKPASS"])
+            assert helper != ASKPASS_SCRIPT
+            assert helper.name == "git-askpass.sh"
+            assert helper.stat().st_mode & 0o777 == 0o700
         else:
             assert "GIT_ASKPASS" not in env
         return await original(*args, **kwargs)
@@ -151,20 +155,44 @@ async def test_task_and_parent_cannot_inject_push_environment(tmp_path, monkeypa
     assert all(push for push, secret in captured if secret)
 
 
-@pytest.mark.parametrize("mode", [0o644, 0o777])
-async def test_askpass_bad_permissions_fail_closed(tmp_path, monkeypatch, mode):
+async def test_tampered_askpass_source_fails_closed(tmp_path, monkeypatch):
     from hufiagents.tools import git
 
     helper = tmp_path / "helper.sh"
     helper.write_text("#!/bin/sh\nexit 1\n")
-    helper.chmod(mode)
+    helper.chmod(0o700)
     monkeypatch.setattr(git, "ASKPASS_SCRIPT", helper)
     _, tool = await committed_workspace(
         tmp_path, "https://github.com/o/r.git", push_token="fixture"
     )
     with pytest.raises(PermissionError, match="unsafe askpass"):
         await tool.execute(call("push"))
-    assert helper.stat().st_mode & 0o777 == mode
+
+
+async def test_group_writable_packaged_source_uses_private_verified_copy(tmp_path, monkeypatch):
+    from hufiagents.tools import git
+
+    source = tmp_path / "git-askpass.sh"
+    source.write_bytes(git.ASKPASS_SCRIPT.read_bytes())
+    source.chmod(0o775)
+    monkeypatch.setattr(git, "ASKPASS_SCRIPT", source)
+    captured = []
+    original = __import__("asyncio").create_subprocess_exec
+
+    async def spy(*args, **kwargs):
+        if "HUFI_GIT_PUSH_TOKEN" in kwargs["env"]:
+            captured.append(Path(kwargs["env"]["GIT_ASKPASS"]))
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", spy)
+    root = tmp_path / "http"
+    root.mkdir()
+    make_bare_http_repo(root)
+    with basic_auth_git_server(root, username="x-access-token", password="fixture") as url:
+        _, tool = await committed_workspace(tmp_path, f"{url}/repo.git", push_token="fixture")
+        result = await tool.execute(call("push"))
+    assert result.exit_code == 0
+    assert captured and all(not path.exists() for path in captured)
 
 
 async def test_metadata_symlink_and_hardlink_are_rejected(tmp_path):
@@ -181,19 +209,24 @@ async def test_metadata_symlink_and_hardlink_are_rejected(tmp_path):
         validate_metadata(workspace.root)
 
 
-async def test_package_scripts_cannot_execute_with_service_identity(tmp_path):
+async def test_package_scripts_execute_only_inside_the_workspace_sandbox(tmp_path):
     from hufiagents.projects import Project
     from hufiagents.tools.shell import ShellTool
 
     workspace = Workspace(tmp_path)
-    workspace.create("package.json", '{"scripts":{"test":"touch ESCAPED"}}')
+    workspace.create(
+        "package.json",
+        '{"scripts":{"test":"node -e \\"require(\'fs\').writeFileSync(\'ESCAPED\',\'ok\')\\""}}',
+    )
     project = Project(
         id="demo", repo_url="https://github.com/o/r.git", test_command=["/usr/bin/npm", "test"]
     )
     tool = ShellTool(workspace, project=project)
-    with pytest.raises(PermissionError, match="OS sandbox"):
-        await tool.execute(call("run_tests"))
-    assert not (tmp_path / "ESCAPED").exists()
+    result = await tool.execute(call("run_tests"))
+    assert result.exit_code == 0
+    # The script may write its mission checkout, but receives no capability to
+    # write any mount outside it (covered by the adversarial bwrap probe).
+    assert (tmp_path / "ESCAPED").exists()
 
 
 async def test_http_redirect_is_not_followed(tmp_path):

@@ -156,3 +156,42 @@ HTTP-Redirects, Credential-Helper) und
 Rollback: Review-Commit nur zurücknehmen, wenn Push/PR und Projektcode-Ausführung
 weiter deaktiviert bleiben. Ein Revert ist keine sichere operative Wiederfreigabe
 des ursprünglichen Credential-Pfades.
+
+## Phase 3A Hardening-Folgeprüfung (2026-09-07)
+
+Die beiden ursprünglichen Release-Blocker sind auf diesem Linux-Host technisch
+geschlossen (ADR-013). `/usr/bin/bwrap` 0.11.1 wurde mit User-, PID- und
+Netzwerk-Namespace verifiziert. Projektkommandos laufen ausschließlich netzlos in
+Bubblewrap, mit privatem tmp/proc, einem einzigen beschreibbaren Mission-Workspace,
+einer minimalen Environment und einer Runtime-Allowlist statt `/usr/bin` insgesamt.
+Damit fehlen `/home`, `.ssh`, `.config`, `.gitconfig`, `/srv`, Docker-Socket,
+Systemd-Laufzeit, fremde Workspaces, `HUFI_GITHUB_TOKEN` und `HUFI_GIT_PUSH_TOKEN`.
+Fehlendes/fehlgeschlagenes bwrap und nicht erlaubte Runtime-Programme fail-closed.
+
+Credential-Push/PR bleibt privilegiert und getrennt von untrusted project code.
+Der direkte Linux-Kindprozess setzt `PR_SET_PDEATHSIG=SIGKILL` und prüft seine
+Parent-PID; zusätzlich enthält Bubblewrap die gesamte Credential-Nachkommenschaft in
+einem PID-Namespace mit `--die-with-parent`. Der reale Testbaum
+`HufiAgents -> Push -> Kind -> Enkel` ergibt nach SIGKILL oder SIGTERM des
+HufiAgents-Probeprozesses **0** Credential-Descendants. Dasselbe gilt für Cancel und
+Timeout. Timeout nutzt TERM, zwei Sekunden Grace-Period und KILL; Cancel reapt nach
+TERM sofort, damit Coroutine-Cancellation die Bereinigung nicht unterbrechen kann.
+Recovery wiederholt einen Push nach Erfolg-plus-Crash nicht automatisch.
+
+Neue Tests decken die Sandbox-Grenzen, fehlendes/fehlgeschlagenes bwrap,
+Kind/Enkel bei SIGKILL/SIGTERM, Cancel und Timeout real ab. Bestehende lokale
+HTTP-Basic-Auth-Tests bestätigen weiterhin falschen Token abgewiesen, richtigen Token
+erfolgreich, 0 persistierte Secrets sowie blockierte pushurl/Config/Redirects.
+Der finale Lauf ergab 249 bestandene Tests; Ruff Check und Format-Check bestanden.
+
+Echter HufManager-Probelauf nach ADR-013: Live-Clone, lokaler Ein-Datei-Commit im
+entsorgten Workspace, zwei Reviewer-Freigaben, Push/PR nur dry-run und fehlender Token
+fail-closed. `npm test`, `npm run lint` und `npm run build` liefen jeweils sandboxed
+und netzlos; alle endeten mit Exit 127, weil der frische Clone keine Dependencies hat.
+`npm install`/`npm ci` wurde nicht außerhalb der Sandbox ausgeführt oder erzwungen.
+
+**MERGE READY = YES für `codex/fix-phase3a-hardening` gegen
+`codex/review-phase3a-auth`: beide ursprünglichen technischen Blocker sind geschlossen.**
+Restrisiken: Dies setzt Linux mit funktionierendem unprivilegiertem Bubblewrap voraus;
+reproduzierbare Dependency-Provisionierung benötigt später einen geprüften separaten
+Artefakt-/Cache-Mechanismus. Kein Push, Deployment oder Produktionszugriff erfolgte.

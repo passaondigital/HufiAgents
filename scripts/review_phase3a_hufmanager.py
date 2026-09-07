@@ -124,24 +124,25 @@ async def main():
         else:
             raise AssertionError("missing credential did not fail closed")
         shell = engine.tools(workspace, tasks[0])["shell"]
-        blocked = []
+        project_commands = {}
         for action in ("run_tests", "run_build", "run_lint"):
-            try:
-                await shell.execute(
-                    ToolCall(
-                        task_id=tasks[0].id,
-                        tool="shell",
-                        action=action,
-                        target="workspace",
-                        params={},
-                        risk_class="R1",
-                        policy_decision="auto_allow",
-                        idempotency_key=action,
-                    )
+            result = await shell.execute(
+                ToolCall(
+                    task_id=tasks[0].id,
+                    tool="shell",
+                    action=action,
+                    target="workspace",
+                    params={},
+                    risk_class="R1",
+                    policy_decision="auto_allow",
+                    idempotency_key=action,
                 )
-            except PermissionError as error:
-                assert "OS sandbox" in str(error)
-                blocked.append(action)
+            )
+            project_commands[action] = {
+                "sandboxed": True,
+                "status": result.result_status,
+                "exit_code": result.exit_code,
+            }
         print(
             json.dumps(
                 {
@@ -153,7 +154,7 @@ async def main():
                     "audit_events": len(audit),
                     "push_and_pr": "dry-run only",
                     "missing_token": "blocked",
-                    "project_commands": blocked,
+                    "project_commands": project_commands,
                     "provider": "fake (deterministic)",
                 },
                 indent=2,

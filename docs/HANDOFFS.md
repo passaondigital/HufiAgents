@@ -355,3 +355,24 @@ containment remain required; HufManager test/build/lint are intentionally blocke
 No production modifications, real secrets, HufManager push or external PR creation.
 Rollback: revert review commit only if push/PR and project-code execution remain
 disabled; do not restore the vulnerable credential path as an operational rollback.
+
+## 2026-09-07 — Codex Phase 3A hardening follow-up
+
+```text
+From: Codex
+Branch: codex/fix-phase3a-hardening
+Base: codex/review-phase3a-auth @ cbbff2f
+Ready: yes for review against codex/review-phase3a-auth.
+Changes: ADR-013; Bubblewrap-only, netless project-code execution with a minimal
+runtime allowlist; bwrap/PID namespace containment for credential processes;
+PR_SET_PDEATHSIG plus parent-PID race check; TERM/grace/KILL timeout and immediate
+cancel cleanup. No fallback to same-UID project execution.
+Evidence: real bwrap host probe; adversarial filesystem/environment/network/workspace
+tests; HufiAgents -> credential Push -> child -> grandchild SIGKILL/SIGTERM tests
+with zero surviving credential descendants; local HTTP Basic Auth reject/success tests;
+existing crash-after-successful-push/no-double-push test. HufManager cloned live and
+its npm test/lint/build commands ran only sandboxed; exit 127 because fresh clone has
+no dependencies. No install, push, PR, deployment or production access.
+Decision: MERGE READY = YES for the two original blockers. Remaining work is a separate
+trusted dependency-provisioning design if successful HufManager builds are required.
+```
