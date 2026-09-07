@@ -133,9 +133,9 @@ A mission that should also run tests/lint/build and push a draft PR adds
 `"git"`+`"shell"`+`"github"` to `allowed_tools` and appends operations
 (`shell.run_tests`, `git.add`, `git.commit`, `git.push`,
 `github.open_pr`) — see `docs/PHASE2-GIT-PR-WORKFLOW.md`'s mission example
-for the exact shape; set `dry_run: false` and configure
-`HUFI_GITHUB_TOKEN` only once Pascal wants a real push/PR against
-HufManager.
+for the exact shape; set `dry_run: false` once Pascal wants a real push/PR
+against HufManager. **`HUFI_GITHUB_TOKEN` alone is not sufficient for
+`git.push` to succeed — see "Bekannte Risiken" below.**
 
 ## Verifiziert (this pass)
 
@@ -159,9 +159,41 @@ HufManager.
   token budget (cosmetic — the pipeline mechanics are what this run proves,
   not report polish). No push, no PR, no product change; throwaway
   DB/workspace deleted after the run.
+- **Real WRITE E2E probe (Phase 3A, 2026-09-07):** a two-task mission (task 2
+  depending on task 1, the existing sequential-dependency mechanism) drove
+  `integrator`/`hufi-local-router` through a real, live
+  `git.clone` -> `git.branch` (`hufi/first-run-e2e`) -> `files.write_file`
+  (exactly one new file, `docs/HUFIAGENTS-FIRST-RUN.md`) -> `git.status` ->
+  `git.add` -> `git.diff` -> `git.commit` -> reviewer `approve` ->
+  `completed` for task 1 (44.2s total for the whole mission). Verified
+  locally: `git show --stat HEAD` reported exactly `1 file changed,
+  33 insertions(+)` at the correct path; `git remote get-url origin`
+  matched the registered `repo_url` exactly. Task 2 (`git.push`) failed --
+  see "Bekannte Risiken" below, this was expected and is not a defect in
+  the tested pipeline. Confirmed via `gh api`/`gh pr list` afterward: no new
+  branch or PR exists on the real `passaondigital/hufmanager` -- nothing
+  reached the real repository. Throwaway DB/workspace deleted after the run.
 
 ## Bekannte Risiken
 
+- **`GitTool.push` has no HTTPS credential-injection mechanism at all --
+  found by the Phase 3A real push attempt above, confirmed by code
+  inspection, not just by that one failure.** `HUFI_GITHUB_TOKEN` is wired
+  only into `GitHubTool` (`gh pr create`, via `GH_TOKEN` subprocess env,
+  `hufiagents/tools/github.py`); `GitTool.execute`'s `push` branch calls
+  `run_process(argv, self.workspace, call, self.timeout)` with no `extra_env`
+  at all, and every git invocation already runs with `-c credential.helper=`
+  and `GIT_CONFIG_GLOBAL=/dev/null` (deliberate isolation from the host's own
+  `gh auth` session, ADR-009's stated design). The result: `git push` over
+  HTTPS has no way to authenticate, token configured or not. Live evidence:
+  `fatal: could not read Username for 'https://github.com': terminal
+  prompts disabled` (`exit=128`). This is **not** a "missing token value"
+  problem the way `GitHubTool` is -- it is a missing code path. Deliberately
+  not fixed in this pass (Pascal's instruction: no new credential
+  architecture invented on the spot); the eventual fix needs the same
+  ADR-009-level design care (how the token reaches `git push` without ever
+  being logged/persisted/exposed to the model or written into `.git/config`)
+  as `GH_TOKEN` got for `gh`, not an ad-hoc patch.
 - **`npm install`/`run_tests`/`run_build`/`run_lint` were not exercised
   against the real HufManager dependency tree in this pass** — deliberately,
   to avoid an unbounded-duration `npm install` (large dependency tree, ~80

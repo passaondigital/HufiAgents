@@ -211,3 +211,57 @@ Acceptance criteria: docs/ROADMAP.md Phase 2 exit; task instructions' 8-point ch
   tested; the live read-only HufManager mission is the "reproducibly take over a real
   foreign project" proof requested.
 ```
+
+## 2026-09-07 — Claude Code -> Pascal/Codex — Phase 3A real WRITE E2E probe (blocked at push)
+
+```text
+Date: 2026-09-07
+From: Claude Code (Architect & Reliability Lead), branch claude/phase3a-hufmanager-write-e2e
+  (fresh worktree at /home/administrator/HufiAgents-phase3a-write-e2e, off origin/main @ b0e4f4e)
+To: Pascal / Codex
+Task/Issue: Phase 3A (Pascal direct task) -- prove HufiAgents itself (not the operator)
+  can drive a real write mission against passaondigital/hufmanager through to a draft PR
+Ready: partial. Everything through commit is real, live, and verified; push is blocked by
+  a genuine, precisely-identified missing capability (not a missing token value) -- see
+  "Known risks". No source changes in this branch; docs-only.
+Files/interfaces changed:
+  - docs/CONNECTOR-HUFMANAGER.md: corrected a misleading line ("configure
+    HUFI_GITHUB_TOKEN... for a real push" implied token alone was sufficient; it is not),
+    recorded the Phase 3A run and the GitTool.push credential-gap finding in full detail
+Tests run: none new (no code changed). Full existing suite (189/189) was already green on
+  origin/main before this run; not re-run here since nothing in hufiagents/ changed.
+  Live verification instead: a real two-task mission (task 2 depends on task 1, existing
+  Planner dependency chaining) through the actual Orchestrator/gateway/reviewer pipeline --
+  task 1: git.clone (real, live passaondigital/hufmanager) -> git.branch
+  (hufi/first-run-e2e) -> files.write_file (exactly one new file,
+  docs/HUFIAGENTS-FIRST-RUN.md) -> git.status -> git.add -> git.diff -> git.commit ->
+  reviewer approve -> completed, 44.2s total, hufi-local-router/real Qwen. Verified
+  locally: `git show --stat HEAD` = exactly 1 file changed, 33 insertions; origin exactly
+  matches the registered repo_url. Task 2 (git.push) failed: `fatal: could not read
+  Username for 'https://github.com': terminal prompts disabled` (exit 128). Confirmed via
+  `gh api`/`gh pr list --repo passaondigital/hufmanager`: no new branch or PR exists on
+  the real repo -- nothing reached it. Throwaway DB/workspace deleted after the run.
+Known risks: GitTool.push has no HTTPS credential-injection mechanism at all -- confirmed
+  by both the live failure and direct code inspection. HUFI_GITHUB_TOKEN is wired only
+  into GitHubTool (gh pr create, via GH_TOKEN subprocess env); GitTool's push branch calls
+  run_process with no extra_env, and every git invocation already runs with
+  `-c credential.helper=` + `GIT_CONFIG_GLOBAL=/dev/null` (deliberate isolation from the
+  host's own `gh auth` session, ADR-009). Configuring HUFI_GITHUB_TOKEN today would fix
+  open_pr but NOT push -- push would still fail exactly the same way. Per Pascal's explicit
+  instruction, no new credential architecture was invented on the spot to route around
+  this; it needs the same ADR-009-level design care GH_TOKEN got, not an ad-hoc patch.
+  See docs/CONNECTOR-HUFMANAGER.md "Bekannte Risiken" for full detail.
+Need from receiver: a deliberate design decision + small implementation pass for how a
+  push credential reaches `git push` safely (e.g. a short-lived token injected via a
+  git credential helper script, or an https://x-access-token:<token>@github.com/... URL
+  built server-side only and never logged) -- then this exact mission (already proven
+  through commit) can be re-run to close the loop through push + draft PR.
+Acceptance criteria: task instructions' 10-point checklist -- clone/branch/change/review/
+  commit all real, live, and verified (items 1-6, 9 up to the push boundary); item 7's
+  abort conditions were either already structurally enforced (main/master protection,
+  foreign-remote blocking via origin re-verification, exactly-one-file-changed verified
+  post-hoc) or moot given push never had a working credential path in the first place;
+  item 8's full audit trail captured (70 events, all listed types present); item 10
+  followed exactly -- the missing point is reported precisely, not routed around, and
+  every step up to push was fully tested regardless.
+```
