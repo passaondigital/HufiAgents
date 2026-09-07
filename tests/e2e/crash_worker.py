@@ -39,7 +39,7 @@ async def main():
                 await super().execute(call)
                 os._exit(75)
 
-        engine.tools = lambda workspace: {"files": CrashFiles(workspace)}
+        engine.tools = lambda workspace, task=None: {"files": CrashFiles(workspace)}
     await engine.tick()
     await asyncio.gather(*engine.active.values())
 

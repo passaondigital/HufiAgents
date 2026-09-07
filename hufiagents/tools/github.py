@@ -18,9 +18,11 @@ class GitHubTool:
 
     id = "github"
 
-    def __init__(self, workspace, timeout=30, *, repo="", base_branch="main", token=""):
+    def __init__(
+        self, workspace, timeout=30, *, repo="", base_branch="main", token="", dry_run=False
+    ):
         self.workspace, self.timeout = workspace, timeout
-        self.repo, self.base_branch, self.token = repo, base_branch, token
+        self.repo, self.base_branch, self.token, self.dry_run = repo, base_branch, token, dry_run
 
     async def classify(self, action, params):
         return Risk.R2 if action == "open_pr" else Risk.R3
@@ -28,7 +30,9 @@ class GitHubTool:
     async def execute(self, call):
         if call.action != "open_pr":
             raise PermissionError("only draft PR creation is implemented in V1")
-        if not self.repo or not self.token:
+        if not self.repo:
+            raise PermissionError("GitHub integration not configured")
+        if not self.token and not self.dry_run:
             raise PermissionError("GitHub integration not configured")
         branch = await self._current_branch(call)
         if not HUFI_BRANCH.fullmatch(branch):
@@ -39,6 +43,15 @@ class GitHubTool:
             raise ValueError("PR title must be one bounded line")
         if len(body) > 4000:
             raise ValueError("PR body exceeds bounded size")
+        if self.dry_run:
+            target = f"{self.repo}@{self.base_branch}"
+            return call.model_copy(
+                update={
+                    "result_status": "ok",
+                    "exit_code": 0,
+                    "result_summary": f"dry-run: PR {branch} -> {target} skipped",
+                }
+            )
         argv = [
             "/usr/bin/gh",
             "pr",
@@ -65,7 +78,7 @@ class GitHubTool:
 
     async def _current_branch(self, call):
         result = await run_process(
-            ["/usr/bin/git", "rev-parse", "--abbrev-ref", "HEAD"],
+            ["/usr/bin/git", "symbolic-ref", "--short", "HEAD"],
             self.workspace,
             call,
             self.timeout,

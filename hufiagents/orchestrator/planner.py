@@ -22,6 +22,8 @@ class TaskSpec(Contract):
     )
     allowed_tools: list[str] = Field(default_factory=lambda: ["files"])
     agent_id: str | None = None
+    project_id: str | None = None
+    dry_run: bool = False
     preferred_provider: str | None = None
     retry_limit: int = Field(2, ge=0, le=5)
     budget_seconds: int = Field(300, ge=1, le=3600)

@@ -111,6 +111,9 @@ async def test_git_workspace_flow(tmp_path):
     assert (await tool.execute(call("git", "add", path="result.md"))).exit_code == 0
     assert (await tool.execute(call("git", "commit"))).exit_code == 0
     assert (await tool.execute(call("git", "status"))).result_summary == ""
+    log = await tool.execute(call("git", "log"))
+    assert log.exit_code == 0 and "HufiAgents workspace result" in log.result_summary
+    assert await tool.classify("log", {}) == Risk.R0
     with pytest.raises(PermissionError):
         await tool.execute(call("git", "force_push"))
 

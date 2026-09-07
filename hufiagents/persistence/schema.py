@@ -58,7 +58,7 @@ for name, model in MODELS.items():
             else Integer
             if field in INTEGER_FIELDS
             else Boolean
-            if field == "execution_started"
+            if field in {"execution_started", "dry_run"}
             else String
         )
         args = [ForeignKey(FK[field])] if field in FK else []

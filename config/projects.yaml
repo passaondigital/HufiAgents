@@ -1,0 +1,17 @@
+# Server-side project registry (docs/DECISIONS.md ADR-010). Only projects
+# listed here, with allowed: true, are reachable by any task -- and only via
+# GitTool.clone/push, GitHubTool.open_pr and ShellTool.run_tests/run_build/
+# run_lint. A task can never supply its own repo_url/github_repo/commands.
+projects:
+  hufmanager:
+    repo_url: https://github.com/passaondigital/hufmanager.git
+    github_repo: passaondigital/hufmanager
+    default_branch: main
+    allowed: true
+    # docs/CONNECTOR-HUFMANAGER.md records how these were determined
+    # (package.json scripts, read-only, 2026-09-07). Build needs
+    # VITE_SUPABASE_URL/VITE_SUPABASE_PUBLISHABLE_KEY env vars to fully
+    # succeed (see that doc); not required for lint/test.
+    test_command: ["/usr/bin/npm", "test"]
+    build_command: ["/usr/bin/npm", "run", "build"]
+    lint_command: ["/usr/bin/npm", "run", "lint"]

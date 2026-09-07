@@ -60,9 +60,25 @@ run against the live `hufi-local-router`. State survives a process restart
   existing external repository into a mission workspace (needed before this
   can act on a real project's existing code, not just a fresh workspace
   repo) — left for the HufManager connector below to avoid overlap.
-- HufManager as first real project connector/use case.
+- HufManager as first real project connector/use case. **Connector built and
+  live-verified** — see `docs/DECISIONS.md` ADR-010 and
+  `docs/CONNECTOR-HUFMANAGER.md`: `ProjectRegistry`
+  (`config/projects.yaml`), `GitTool.clone` + branch-isolation +
+  main/master protection + foreign-remote blocking, project-scoped
+  `ShellTool.run_tests`/`run_build`/`run_lint`, `Task.dry_run`. A real
+  read-only mission against `passaondigital/hufmanager` (real clone, real
+  `hufi-local-router` model call, reviewer approve, completed) ran twice
+  live. Not yet done: running `npm install`/tests/build for real against
+  HufManager's actual dependency tree (deliberately deferred, see
+  `docs/CONNECTOR-HUFMANAGER.md` "Bekannte Risiken"), and giving the model
+  actual visibility into cloned file contents (today only hand-placed
+  `constraints` reach it).
 
 **Exit:** HufiAgents can complete a bounded real repository task and prepare a verified PR.
+Push/PR mechanics and the HufManager connector are both real and tested;
+a genuinely code-editing (not just report-writing) real mission against
+HufManager, with a real test/build run, is the concrete next step to fully
+close this exit criterion.
 
 ## Phase 3 — Browser and infrastructure operations
 

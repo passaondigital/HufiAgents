@@ -72,6 +72,8 @@ class Task(Contract):
     dependencies: list[str] = Field(default_factory=list)
     status: State = State.queued
     assigned_agent_id: str | None = None
+    project_id: str | None = None
+    dry_run: bool = False
     idempotency_key: str = Field(default_factory=uid)
     heartbeat_at: datetime | None = None
     created_at: datetime = Field(default_factory=now)

@@ -142,3 +142,72 @@ same message. Task split and worktree separation (this branch's worktree is new,
 were coordinated directly between the sessions before either wrote code, per Pascal's new
 standing rule (no two sessions in the same worktree/branch) — see `docs/REVIEW-CORE-V1.md`
 "Verbleibende Risiken" for the incident that prompted that rule.
+
+## 2026-09-07 — Claude Code -> Pascal/Codex — Phase 2B HufManager connector
+
+```text
+Date: 2026-09-07
+From: Claude Code (Architect & Reliability Lead), branch claude/phase2-hufmanager-connector
+  (fresh worktree at /home/administrator/HufiAgents-phase2-hufmanager, off origin/main @ aa8286b)
+To: Pascal / Codex
+Task/Issue: Phase 2B (Pascal direct task) -- first real project connector, target
+  passaondigital/hufmanager
+Ready: yes -- implemented, tested, live-verified, documented; opening a draft PR rather
+  than fast-forwarding main, per docs/OPERATING_MODEL.md ("Pull requests for integration
+  and review") -- same reasoning as the Phase 2A git/PR-workflow PR.
+Files/interfaces changed:
+  - hufiagents/projects/__init__.py (new): ProjectRegistry, reads config/projects.yaml
+  - config/projects.yaml (new): passaondigital/hufmanager registered, allowed: true
+  - hufiagents/tools/git.py: clone action; add/commit now require a hufi/ branch (not
+    main/master/project default); push re-verifies actual origin against the target,
+    not just that a setting is non-empty; _current_branch switched from
+    `rev-parse --abbrev-ref HEAD` to `symbolic-ref --short HEAD` (the former doesn't
+    resolve before the first commit -- a real bug this pass found and fixed, see below)
+  - hufiagents/tools/github.py: dry_run no longer requires a token (only a repo) --
+    lets a mission rehearse open_pr without live GitHub credentials
+  - hufiagents/tools/shell.py: run_tests/run_build/run_lint, argv always from the
+    project registry, never call.params
+  - hufiagents/orchestrator/registry.py, planner.py, engine.py: Task.project_id/dry_run
+    (opt-in, validated at submit()), tools() now resolves the active project and passes
+    it + dry_run into Git/GitHub/ShellTool; project_bound audit event logged at submit()
+  - hufiagents/contracts.py, persistence/schema.py: Task gains project_id/dry_run;
+    persistence/migrations/002_project_fields.py (idempotent -- see ADR-010) adds the
+    columns for a database migrated before this change
+  - hufiagents/config.py: projects_path, project_tool_timeout_seconds (240s default,
+    separate from the 30s tool_timeout_seconds -- clone/test/build can legitimately run
+    longer)
+  - docs/DECISIONS.md ADR-010, docs/CONNECTOR-HUFMANAGER.md (new)
+Tests run: uv run ruff check/format --check (clean), uv run pytest -q (189/189, was 169;
+  20 new -- tests/unit/test_projects.py, test_git_connector.py, test_shell_connector.py,
+  tests/integration/test_connector_end_to_end.py -- covering clone-from-registry-only,
+  branch isolation, main/master (and non-"main"-named default branch) protection,
+  foreign-remote blocking even under direct tampering, dry-run, a full pipeline's audit
+  trail, a real push through a cloned project against a disposable local repo, and a
+  simulated-restart recovery test for a project-bound task), uv build (clean).
+  Real, live verification (not part of pytest -- this repo's suite is deliberately
+  network-free, .github/workflows/ci.yml): a real read-only clone of
+  passaondigital/hufmanager via the actual GitTool.clone code path, then a full mission
+  (integrator agent, hufi-local-router/real Qwen, real clone, reviewer approve,
+  completed) run twice end-to-end -- 31.2s then 23.4s, router requests_total 30 -> 32,
+  0 failovers. Throwaway DB/workspace deleted after each run; no host service touched;
+  no push/PR against HufManager.
+Known risks: docs/CONNECTOR-HUFMANAGER.md "Bekannte Risiken" -- npm install/test/build
+  not yet run for real against HufManager's actual dependency tree (deliberately
+  deferred, unbounded duration on a memory-constrained host); the model does not see
+  cloned file contents yet (only hand-placed mission.constraints reached it in the live
+  run); HufManager's own AGENTS.md/CODEXTODO.md governance model is separate from
+  HufiAgents' risk/approval engine (this pass stayed read-only/dry-run specifically to
+  avoid needing to reconcile the two); build likely needs placeholder Supabase env vars,
+  not yet verified; stray bun.lock/bun.lockb alongside package-lock.json, not acted on.
+Need from receiver: review + merge decision on claude/phase2-hufmanager-connector. Next
+  concrete step to fully close the Phase 2 exit criterion: a real code-editing mission
+  against HufManager (not just report-writing) with a real npm test/build run and an
+  actual (non-dry-run) draft PR, once Pascal wants to spend that resource/time budget
+  and configures HUFI_GITHUB_TOKEN.
+Acceptance criteria: docs/ROADMAP.md Phase 2 exit; task instructions' 8-point checklist
+  (registry+allowlist, isolated clone, per-mission branch, main/master + foreign-remote
+  protection, audit metadata, safe git status/diff/log, project-specific test/build,
+  HufManager profile, dry-run, integrator-agent integration) -- all implemented and
+  tested; the live read-only HufManager mission is the "reproducibly take over a real
+  foreign project" proof requested.
+```

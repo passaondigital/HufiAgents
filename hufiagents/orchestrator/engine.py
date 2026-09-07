@@ -8,6 +8,7 @@ from hufiagents.orchestrator.planner import Planner
 from hufiagents.orchestrator.registry import AgentRegistry
 from hufiagents.orchestrator.reviewer import Reviewer
 from hufiagents.orchestrator.state import TERMINAL
+from hufiagents.projects import ProjectRegistry
 from hufiagents.providers.base import CompletionRequest
 from hufiagents.providers.fake import FakeProvider
 from hufiagents.providers.hufi_local_router import HufiLocalRouter
@@ -28,6 +29,7 @@ class Orchestrator:
         self.store, self.settings = store, settings
         self.registry = AgentRegistry(store)
         self.registry.seed()
+        self.projects = ProjectRegistry(settings.projects_path)
         self.providers = providers or {
             "fake": FakeProvider(),
             "hufi-local-router": HufiLocalRouter(
@@ -56,6 +58,8 @@ class Orchestrator:
                 raise ValueError("unsafe artifact path")
             if task.assigned_agent_id is not None:
                 self.registry.get(task.assigned_agent_id)
+            if task.project_id is not None:
+                self.projects.get(task.project_id)
         with self.store.transaction() as tx:
             pending = tx.tasks.list(
                 status=set(State) - TERMINAL, limit=self.settings.max_pending_tasks
@@ -74,6 +78,17 @@ class Orchestrator:
                     )
                 )
                 tx.log("task_created", task=task, dependencies=task.dependencies)
+                if task.project_id:
+                    project = self.projects.get(task.project_id)
+                    tx.log(
+                        "project_bound",
+                        task=task,
+                        project_id=project.id,
+                        repo_url=project.repo_url,
+                        github_repo=project.github_repo,
+                        default_branch=project.default_branch,
+                        dry_run=task.dry_run,
+                    )
         return mission
 
     async def start(self):
@@ -243,7 +258,7 @@ class Orchestrator:
                         tokens=result.tokens,
                         characters=len(text),
                     )
-            tools = self.tools(workspace)
+            tools = self.tools(workspace, task)
             operations = next(item.value["items"] for item in contexts if item.key == "operations")
             for operation in operations:
                 tool = tools.get(operation["tool"])
@@ -297,21 +312,32 @@ class Orchestrator:
             else:
                 tx.transition(task, State.failed, reason="reviewer rejected or retries exhausted")
 
-    def tools(self, workspace):
+    def tools(self, workspace, task=None):
+        project = self.projects.get(task.project_id) if task and task.project_id else None
+        dry_run = bool(task and task.dry_run)
         return {
             "files": FilesTool(workspace),
-            "shell": ShellTool(workspace, self.settings.tool_timeout_seconds),
+            "shell": ShellTool(
+                workspace,
+                self.settings.tool_timeout_seconds,
+                project=project,
+                project_timeout=self.settings.project_tool_timeout_seconds,
+            ),
             "git": GitTool(
                 workspace,
                 self.settings.tool_timeout_seconds,
                 remote_url=self.settings.git_remote_url,
+                project=project,
+                dry_run=dry_run,
+                clone_timeout=self.settings.project_tool_timeout_seconds,
             ),
             "github": GitHubTool(
                 workspace,
                 self.settings.tool_timeout_seconds,
-                repo=self.settings.github_repo,
-                base_branch=self.settings.github_base_branch,
+                repo=project.github_repo if project else self.settings.github_repo,
+                base_branch=project.default_branch if project else self.settings.github_base_branch,
                 token=self.settings.github_token.get_secret_value(),
+                dry_run=dry_run,
             ),
         }
 

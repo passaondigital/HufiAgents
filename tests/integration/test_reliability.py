@@ -149,7 +149,7 @@ async def test_approval_lifecycle(tmp_path, resolution, terminal):
         tx.agents.save(agent)
     tool = None
 
-    def tools(workspace):
+    def tools(workspace, task=None):
         nonlocal tool
         if tool is None:
             tool = ApprovalFiles(workspace)
@@ -182,7 +182,7 @@ async def test_r2_preflight_rejects_before_effect(tmp_path):
         agent.default_risk_ceiling = Risk.R2
         tx.agents.save(agent)
 
-    def tools(workspace):
+    def tools(workspace, task=None):
         tool = ApprovalFiles(workspace)
         tool.level = Risk.R2
         return {"files": tool}

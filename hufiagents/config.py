@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     github_repo: str = ""
     github_base_branch: str = "main"
     github_token: SecretStr = SecretStr("")
+    # Phase 2B project connector (ADR-010). A task selects a project by id;
+    # repo_url/github_repo/commands always come from this file, never a task.
+    projects_path: Path = Path("config/projects.yaml")
+    # Clone/test/build/lint can legitimately run much longer than the quick
+    # status/diff/commit/push calls tool_timeout_seconds already bounds, so
+    # they get their own, larger, still-bounded budget.
+    project_tool_timeout_seconds: float = Field(240, gt=0, le=1800)
 
     @model_validator(mode="after")
     def heartbeat_order(self):
