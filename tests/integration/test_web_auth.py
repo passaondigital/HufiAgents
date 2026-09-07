@@ -137,6 +137,17 @@ def test_session_authorizes_approval_without_a_separate_bearer_token(tmp_path):
         assert tx.approvals.get(approval.id).status == "denied"
 
 
+def test_public_hostname_is_trusted_when_configured(tmp_path):
+    # Simulates a reverse proxy forwarding its real Host header -- the
+    # default TrustedHostMiddleware allowlist (127.0.0.1/localhost/
+    # testserver) would otherwise reject every proxied request.
+    with TestClient(
+        create_app(auth_settings(tmp_path, public_hostname="agents.example.com"))
+    ) as client:
+        response = client.get("/health", headers={"host": "agents.example.com"})
+        assert response.status_code == 200
+
+
 def test_projects_and_models_endpoints_report_configured_state(tmp_path):
     with TestClient(create_app(auth_settings(tmp_path))) as client:
         client.post(
