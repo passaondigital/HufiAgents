@@ -119,3 +119,17 @@ Both work autonomously in separate branches/worktrees and coordinate through rep
 ## Repository safety
 
 This repository is currently public. **Never commit real secrets, server credentials, customer data, private SSH keys, API keys or production `.env` files.** Use placeholders and secret stores only.
+
+## Runnable Core V1 (Codex branch)
+
+Python 3.12 and [uv](https://docs.astral.sh/uv/) are used in an isolated venv.
+Existing host services are not installed or managed by this project.
+
+```sh
+uv sync --frozen
+uv run ruff check .
+uv run ruff format --check .
+uv run pytest -q
+```
+
+Dependencies, including development tools, are pinned in `uv.lock`.

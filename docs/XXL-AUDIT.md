@@ -280,3 +280,15 @@ not before.
   config file reads, `journalctl -k`, `crontab -l`, `du`, `gh repo list`).
   No file was modified, no service was started/stopped/restarted, no package
   was installed.
+
+## Codex read-only verification — 2026-09-07 17:00 CEST
+
+Rechecked hostname/kernel, uptime, RAM/swap, disk/inodes, listeners, process
+RSS, running systemd units and Docker names/status. Existing service inventory
+above remains consistent; no service was changed. RAM: 31 GiB total, 19 GiB
+used, 437 MiB free, 11 GiB available; swap 5.3/8 GiB. Available memory and free
+memory are different metrics: retain the conservative Low profile, but do not
+interpret 437 MiB free as the entire allocatable headroom. Disk: 708 GiB free.
+The two model workers remain the dominant memory consumers. Port 8765 was
+unused and is reserved for the local development demo. Dependencies and state
+will live solely in the new Codex worktree/user-owned development paths.

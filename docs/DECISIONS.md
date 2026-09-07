@@ -251,3 +251,37 @@ The deterministic fake-provider E2E test must include and assert on a
 `ReviewResult` row, not just a `completed` status. This is slightly more
 setup for the simplest possible test, in exchange for the lifecycle
 guarantee holding everywhere, always.
+
+### ADR-007 — Core integration branch and additive implementation
+
+**Status:** accepted (2026-09-07)
+
+Pascal explicitly requires `codex/core-v1`; it supersedes the handoff's
+`codex/core-builder`. A separate worktree starts at Claude's architecture
+commit `5d853d9`. Existing documents and systems are preserved. Python 3.12,
+FastAPI, SQLAlchemy Core/SQLite and concurrency 2 follow the handoff.
+An optional Ollama HTTP adapter satisfies the direct request without installing
+or managing Ollama. The default remains the existing HUFI local router.
+A minimal read-only HTML status page is included as explicitly requested.
+No Docker/Compose or production service installation is needed for this core.
+
+### ADR-008 — Explicit exceptional transitions and fail-closed execution
+
+**Status:** accepted (2026-09-07)
+
+Architecture §4 omits `planning -> retrying`, while §7 requires it for
+recovery. §7 also permits cancellation from every nonterminal state, absent
+from §4's normal table. Implement the exact normal table and explicit
+`recovery=True` / `cancel=True` exceptions; both remain audited transactions.
+
+A directory and `cwd` do not isolate arbitrary code. V1 shell execution uses
+fixed argument-vector operations (no shell interpreter, no arbitrary scripts
+or package hooks); broader untrusted test/build execution requires a future
+OS sandbox. Dangerous classifications still require approval, but approval
+never grants an unsupported executor capability. This tightens ADR-005.
+
+A crash after an external effect but before its result commit cannot be
+made exactly-once by a database key alone. Unknown effects fail closed for
+manual reconciliation; create-only files may reconcile identical content.
+Already successful tool results are reused. Audit detail is redacted, and
+model payloads remain task context rather than raw audit text.
