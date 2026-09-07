@@ -58,9 +58,10 @@ def create_app(settings=None, providers=None):
                 lock.close()
 
     app = FastAPI(title="HufiAgents Core V1", lifespan=lifespan)
-    app.add_middleware(
-        TrustedHostMiddleware, allowed_hosts=["127.0.0.1", "localhost", "testserver"]
-    )
+    allowed_hosts = ["127.0.0.1", "localhost", "testserver"]
+    if settings.public_hostname:
+        allowed_hosts.append(settings.public_hostname)
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
 
     @app.middleware("http")
     async def request_boundary(request: Request, call_next):

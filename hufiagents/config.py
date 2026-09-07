@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     # configurable here -- V1 is always loopback-only; a reverse proxy
     # terminates TLS and is the only public listener (docs/V1-OPERATIONS.md).
     port: int = Field(8765, ge=1, le=65535)
+    # Reverse proxy forwards the real Host header (e.g. agents.heyhufi.com)
+    # to this loopback app -- TrustedHostMiddleware rejects anything not in
+    # its allowlist, so a public deployment must add its own hostname here.
+    # Empty (default) keeps the existing 127.0.0.1/localhost/testserver-only
+    # allowlist, so nothing changes for local dev or the test suite.
+    public_hostname: str = ""
 
     @model_validator(mode="after")
     def heartbeat_order(self):
