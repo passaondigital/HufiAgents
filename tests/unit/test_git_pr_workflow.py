@@ -71,7 +71,7 @@ async def test_remote_add_ignores_caller_supplied_url(tmp_path):
 async def test_push_to_configured_remote_succeeds_and_is_verifiable(tmp_path):
     bare = make_bare_remote(tmp_path)
     workspace = Workspace(tmp_path / "workspace")
-    tool = GitTool(workspace, remote_url=str(bare))
+    tool = GitTool(workspace, remote_url=str(bare), push_token="test-token")
     await init_committed_repo(tool, workspace)
     await tool.execute(call("git", "remote_add"))
     result = await tool.execute(call("git", "push"))

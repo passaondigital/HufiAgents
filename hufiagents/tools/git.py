@@ -1,9 +1,12 @@
+import os
 import re
+from pathlib import Path
 
 from hufiagents.contracts import Risk
 from hufiagents.tools.process import run_process
 
 HUFI_BRANCH = re.compile(r"hufi/[a-zA-Z0-9_-]{1,80}")
+ASKPASS_SCRIPT = Path(__file__).with_name("git-askpass.sh")
 
 
 class GitTool:
@@ -18,10 +21,12 @@ class GitTool:
         project=None,
         dry_run=False,
         clone_timeout=None,
+        push_token="",
     ):
         self.workspace, self.timeout = workspace, timeout
         self.remote_url, self.project, self.dry_run = remote_url, project, dry_run
         self.clone_timeout = clone_timeout or timeout
+        self.push_token = push_token
 
     async def classify(self, action, params):
         if action in {"force_push", "reset", "clean"} or params.get("branch") in {"main", "master"}:
@@ -44,6 +49,7 @@ class GitTool:
 
     async def execute(self, call):
         action, params = call.action, call.params
+        extra_env = None
         if action not in {
             "init",
             "clone",
@@ -149,8 +155,20 @@ class GitTool:
                         "result_summary": f"dry-run: push of {branch} to {origin} skipped",
                     }
                 )
+            # Fail closed before spawning anything if no push credential is
+            # configured (docs/DECISIONS.md ADR-011). The token never touches
+            # argv/git config/the remote URL -- only this one subprocess's
+            # env, via a static, secret-free GIT_ASKPASS helper.
+            if not self.push_token:
+                raise PermissionError("no push credential configured; set HUFI_GITHUB_TOKEN")
+            if not os.access(ASKPASS_SCRIPT, os.X_OK):
+                os.chmod(ASKPASS_SCRIPT, 0o755)
+            extra_env = {
+                "GIT_ASKPASS": str(ASKPASS_SCRIPT),
+                "HUFI_GIT_PUSH_TOKEN": self.push_token,
+            }
             argv += ["push", "--set-upstream", "origin", branch]
-        return await run_process(argv, self.workspace, call, self.timeout)
+        return await run_process(argv, self.workspace, call, self.timeout, extra_env=extra_env)
 
     async def _require_unprotected_branch(self, call):
         branch = await self._current_branch(call)

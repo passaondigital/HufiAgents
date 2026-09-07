@@ -56,7 +56,7 @@ async def settle(engine, mission_id):
 
 async def test_integrator_agent_pushes_a_real_commit_end_to_end(tmp_path):
     bare = make_bare_remote(tmp_path)
-    store, engine = setup(tmp_path, git_remote_url=str(bare))
+    store, engine = setup(tmp_path, git_remote_url=str(bare), github_token="test-token")
     mission = engine.submit(
         MissionCreate(
             outcome="ship it",

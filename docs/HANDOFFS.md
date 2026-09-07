@@ -265,3 +265,75 @@ Acceptance criteria: task instructions' 10-point checklist -- clone/branch/chang
   followed exactly -- the missing point is reported precisely, not routed around, and
   every step up to push was fully tested regardless.
 ```
+
+## 2026-09-07 — Claude Code -> Pascal/Codex — ADR-011 git push credential path, real E2E re-run
+
+```text
+Date: 2026-09-07
+From: Claude Code (Architect & Reliability Lead), same branch
+  claude/phase3a-hufmanager-write-e2e, continuing PR #3 (not a new PR)
+To: Pascal / Codex
+Task/Issue: design + implement a secure git push credential path (Pascal direct task,
+  responding to the finding in the previous handoff entry above), then re-run the real
+  HufManager write E2E
+Ready: mechanism yes, fully implemented/tested/live-verified. Real push against
+  passaondigital/hufmanager itself: no, still blocked -- but now fails closed cleanly
+  with an exact, actionable message instead of a raw git error, and only for the reason
+  stated below (no live token available to this session), not a design gap.
+Files/interfaces changed:
+  - hufiagents/tools/git-askpass.sh (new): static, secret-free GIT_ASKPASS helper,
+    ships as package data (verified in the built wheel, executable bit preserved)
+  - hufiagents/tools/git.py: GitTool gains push_token; push fails closed
+    (PermissionError) if empty and not dry_run; on a real push, extra_env carries
+    GIT_ASKPASS + HUFI_GIT_PUSH_TOKEN to that one subprocess only -- argv, git config,
+    and the remote URL are all unchanged from before this change
+  - hufiagents/orchestrator/engine.py: tools() wires push_token from the same
+    settings.github_token GitHubTool already uses -- no new secret/setting
+  - docs/DECISIONS.md ADR-011 (full design + why-against-each-requirement writeup)
+  - docs/CONNECTOR-HUFMANAGER.md: recorded both live runs (found the gap, then
+    confirmed the fix's fail-closed behavior)
+  - tests/support/git_http_server.py (new): minimal local git-smart-HTTP server
+    enforcing real HTTP Basic Auth (wraps the real git-http-backend) -- lets tests
+    prove the credential path end-to-end without touching a real GitHub repo
+  - tests/unit/test_git_push_credentials.py, tests/integration/test_git_push_credentials_e2e.py
+    (new, 8 tests): missing token blocked pre-subprocess; wrong token fails without
+    leaking it (real HTTP 401 round trip); correct token pushes for real; token absent
+    from argv/git config/remote URL/audit/tool-call params/error text; no credential
+    file left behind (the askpass script is static, nothing ephemeral is ever written);
+    dry-run needs no token; a full orchestrator-level mission (integrator agent) pushes
+    for real with a clean audit trail containing no trace of the token
+  - 3 existing tests updated (test_git_pr_workflow.py, test_git_pr_workflow_e2e.py,
+    test_connector_end_to_end.py) to supply a token now that push correctly requires one
+Tests run: uv run ruff check/format --check (clean), uv run pytest -q (197/197, was 189;
+  8 new), uv build (clean, confirmed hufiagents/tools/git-askpass.sh bundled at 0o755 in
+  the wheel). Design validated empirically before writing any production code (a
+  throwaway PoC against the same local git-http-backend approach) so the ADR reflects
+  what was actually proven to work, not just reasoned about.
+  Real, live (not part of pytest, per this repo's network-free CI convention): re-ran
+  the identical Phase 3A mission against the real passaondigital/hufmanager. Task 1
+  (clone/branch/write/add/commit/review) identical real result again (44.2s, new commit
+  bf08bdff, exactly 1 file / 33 insertions verified). Task 2 (push): now fails with
+  `PermissionError: no push credential configured; set HUFI_GITHUB_TOKEN` instead of
+  the previous raw `fatal: could not read Username...` -- the mechanism correctly
+  detects it has no live credential and stops before attempting anything, exactly as
+  designed. Confirmed via gh api/gh pr list again: nothing reached the real repo.
+Known risks: the credential *mechanism* is now real, tested, and proven against a real
+  HTTP Basic Auth server -- but this session still has no live, write-scoped
+  HUFI_GITHUB_TOKEN for passaondigital/hufmanager, and per Pascal's explicit instruction
+  (both this task and the prior one) did not substitute the host's personal `gh auth`
+  session to get one. Obtaining one requires Pascal's own action (generate a dedicated,
+  repo-scoped PAT, or explicitly authorize a specific existing credential for this use).
+Need from receiver: supply a real HUFI_GITHUB_TOKEN (repo-scoped PAT for
+  passaondigital/hufmanager, or broader if intended for future connectors too) via
+  .env/environment on this host -- never pasted into chat/logs. Once present, this exact
+  mission (docs/CONNECTOR-HUFMANAGER.md's mission example) can be re-run unchanged to
+  close the loop through a real push + draft PR; no further code change should be needed.
+Acceptance criteria: task instructions' 11-point checklist -- ADR-011 written (item 4),
+  implemented (item 5), all 8 required test properties covered with real, not simulated,
+  evidence (item 6, including the two hardest ones: "push succeeds with correct
+  credential" and "error doesn't leak the token", both proven against a real HTTP auth
+  server), real E2E re-run performed (item 7) with an honestly reported outcome (item 8
+  partially -- everything up to push verified real; push itself still blocked, reported
+  exactly why, not fabricated), same PR #3 continued rather than a new one (item 9),
+  ruff/tests/build all green (item 10).
+```
