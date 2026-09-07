@@ -109,6 +109,7 @@ Both work autonomously in separate branches/worktrees and coordinate through rep
 
 - `AGENTS.md` — global operating rules.
 - `CLAUDE.md` — Claude Code role and workflow.
+- `docs/HUFIAGENTS-PRODUCT-VISION.md` — product vision, current V1.0.1 state, UX mandate and long-term target.
 - `docs/ARCHITECTURE.md` — target system design.
 - `docs/ROADMAP.md` — phased delivery plan.
 - `docs/SECURITY.md` — autonomy and approval boundaries.
