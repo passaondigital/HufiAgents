@@ -1,0 +1,2 @@
+# No external side effects are automatically approved in the shipped profile.
+r2_auto_allow: []
