@@ -594,3 +594,35 @@ whose bytes match the checked-in SHA-256, then writes those bytes to a new owner
 for the single credentialed subprocess and the directory is removed when it returns.
 A mismatched or linked source still fails closed. The helper contains no credential;
 the token remains only in the isolated subprocess environment.
+
+### ADR-015 — V1 web UI login: server-side session, opt-in, stdlib only
+
+**Status:** accepted (2026-09-07)
+
+Phase 4 puts HufiAgents behind a public domain (`agents.heyhufi.com`). Nothing about
+the mission/tool/approval API may be reachable by an unauthenticated request once a
+deployment opts into auth, and the health check must stay reachable without
+credentials for monitoring.
+
+`hufiagents/auth.py` implements this with the standard library only: a password is
+never stored in plaintext, only as a salted PBKDF2-SHA256 hash
+(`admin_password_hash`); a session is a signed, expiring cookie value
+(`username:expiry:HMAC-SHA256`, base64-encoded) the server verifies statelessly, with
+no server-side session store to lose on restart or grow unbounded. `hufiagents/api`'s
+`auth_gate` middleware closes every path except `/health` and `/login` once both
+`admin_username` and `admin_password_hash` are configured (`Settings.auth_enabled`);
+if only one is set, startup fails closed (`Settings.auth_configuration`) rather than
+running with a locked-out or forgeable login. Auth is opt-in specifically so the
+existing test suite and local `fake`-provider dev flow, which never configure it,
+are completely unaffected.
+
+A logged-in session also satisfies `/approvals/{id}/approve|deny`'s existing
+owner-bearer-token check (`approval_token`) when auth is enabled: a person who is
+already authenticated as the configured admin does not need a second secret held by
+the browser to click Approve/Deny. `approval_token` remains the only path for
+non-interactive/API use and for any deployment that leaves web auth off.
+
+TLS termination and the cookie's `Secure` flag are the reverse proxy's and
+`cookie_secure`'s job respectively (docs/V1-OPERATIONS.md); HufiAgents itself never
+listens on a public interface (`Settings.port` is loopback-bind only, host is not
+configurable).

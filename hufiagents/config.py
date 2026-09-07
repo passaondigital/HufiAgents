@@ -37,9 +37,39 @@ class Settings(BaseSettings):
     # status/diff/commit/push calls tool_timeout_seconds already bounds, so
     # they get their own, larger, still-bounded budget.
     project_tool_timeout_seconds: float = Field(240, gt=0, le=1800)
+    # V1 web UI/API login (hufiagents/auth.py, docs/DECISIONS.md ADR-015).
+    # Both fields empty (default) disables auth entirely -- required so the
+    # existing test suite, which never sets these, is unaffected. Only a
+    # deployment that sets both gets a login-gated UI/API.
+    admin_username: str = ""
+    admin_password_hash: SecretStr = SecretStr("")
+    session_secret: SecretStr = SecretStr("")
+    # Only ever False for local HTTP testing before a TLS reverse proxy is in
+    # front of the app; production always leaves this True (docs/V1-OPERATIONS.md).
+    cookie_secure: bool = True
+    # Bind/port for `hufiagents serve`. Host is intentionally not
+    # configurable here -- V1 is always loopback-only; a reverse proxy
+    # terminates TLS and is the only public listener (docs/V1-OPERATIONS.md).
+    port: int = Field(8765, ge=1, le=65535)
 
     @model_validator(mode="after")
     def heartbeat_order(self):
         if self.heartbeat_interval_seconds >= self.heartbeat_timeout_seconds:
             raise ValueError("heartbeat interval must be shorter than timeout")
+        return self
+
+    @property
+    def auth_enabled(self) -> bool:
+        return bool(self.admin_username and self.admin_password_hash.get_secret_value())
+
+    @model_validator(mode="after")
+    def auth_configuration(self):
+        # Fail at startup, not silently, if auth is half-configured (a
+        # missing session_secret would make every issued session
+        # unverifiable after a restart -- effectively a locked-out or, worse,
+        # forgeable login).
+        if self.admin_username and not self.admin_password_hash.get_secret_value():
+            raise ValueError("admin_username set without admin_password_hash")
+        if self.auth_enabled and not self.session_secret.get_secret_value():
+            raise ValueError("auth is configured but session_secret is empty")
         return self

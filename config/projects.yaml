@@ -3,6 +3,15 @@
 # GitTool.clone/push, GitHubTool.open_pr and ShellTool.run_tests/run_build/
 # run_lint. A task can never supply its own repo_url/github_repo/commands.
 projects:
+  hufiagents:
+    repo_url: https://github.com/passaondigital/HufiAgents.git
+    github_repo: passaondigital/HufiAgents
+    default_branch: main
+    allowed: true
+    # Analysis-only for now: test/build/lint aren't configured because the
+    # sandbox's PROJECT_EXECUTABLES (hufiagents/tools/sandbox.py) requires a
+    # system /usr/bin/pytest, and this project's tests run through uv's own
+    # managed venv instead -- not installed on this host as a system binary.
   hufmanager:
     repo_url: https://github.com/passaondigital/hufmanager.git
     github_repo: passaondigital/hufmanager
