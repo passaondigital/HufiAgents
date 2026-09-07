@@ -89,6 +89,29 @@ def test_wrong_credentials_rejected_correct_credentials_set_working_session(tmp_
         assert client.get("/missions").status_code == 401
 
 
+def test_same_origin_write_is_allowed_but_cross_origin_is_still_blocked(tmp_path):
+    # Regression: a real browser's fetch()/XHR sends an Origin header on a
+    # same-origin POST too (not just cross-origin) -- the previous check
+    # ("Origin present at all => 403") locked every browser login out while
+    # curl/TestClient calls without an Origin header kept working, hiding
+    # the bug until it was tried through an actual browser.
+    settings = auth_settings(tmp_path, public_hostname="agents.example.com")
+    with TestClient(create_app(settings), base_url="https://agents.example.com") as client:
+        same_origin = client.post(
+            "/login",
+            json={"username": "passaondigital@gmail.com", "password": "a-strong-test-password"},
+            headers={"Origin": "https://agents.example.com"},
+        )
+        assert same_origin.status_code == 200
+
+        cross_origin = client.post(
+            "/login",
+            json={"username": "passaondigital@gmail.com", "password": "a-strong-test-password"},
+            headers={"Origin": "https://evil.example.com"},
+        )
+        assert cross_origin.status_code == 403
+
+
 class ApprovalFiles(FilesTool):
     """R3-classified regardless of action -- forces waiting_approval without
     depending on any real tool's own risk classification (mirrors

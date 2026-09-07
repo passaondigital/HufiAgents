@@ -2,6 +2,7 @@ import fcntl
 import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
@@ -66,7 +67,14 @@ def create_app(settings=None, providers=None):
     @app.middleware("http")
     async def request_boundary(request: Request, call_next):
         if request.method not in {"GET", "HEAD", "OPTIONS"}:
-            if request.headers.get("origin"):
+            origin = request.headers.get("origin")
+            # A same-origin fetch()/XHR write also carries an Origin header in
+            # modern browsers -- only a *mismatching* Origin is a real
+            # cross-origin write attempt. Comparing hosts (not full origin
+            # strings) tolerates the proxy terminating TLS: the browser's
+            # Origin is https://<host>, this app only ever sees the plain
+            # Host header nginx forwards.
+            if origin and urlsplit(origin).netloc != request.headers.get("host", ""):
                 return JSONResponse(
                     {"detail": "browser cross-origin writes are disabled"}, status_code=403
                 )
