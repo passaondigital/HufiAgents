@@ -86,12 +86,12 @@ Mitigations include:
 
 ## Phase 3A review gate
 
-Project package scripts are disabled until an OS sandbox separates task code from
-service credentials and installation files (ADR-012). A fixed npm command is not
-an execution sandbox. Push/PR output from credentialed processes is suppressed,
-rather than relying on regexes to recognize unknown/encoded secrets. Install the
-secret-free askpass helper with 0755 permissions using a trusted, non-task-writable
-installation; invalid permissions fail closed and are never repaired at runtime.
-Hard service crashes additionally require verified process-tree containment;
-SQLite recovery alone does not kill orphaned Git processes. Phase 3A is not yet
-merge-ready; see `CODEX-REVIEW-PHASE3A.md`.
+Project package scripts execute only under the Bubblewrap boundary in ADR-013. It
+clears secrets and host configuration, allows only the current mission workspace to
+be written, uses a private tmp/proc and disables networking. Bubblewrap unavailable
+or failing is a denial, never a same-UID fallback. Credentialed push/PR calls use a
+separate PID namespace plus parent-death signal; cancellation and timeout reap their
+process tree. Push/PR output remains suppressed rather than relying on regexes to
+recognize unknown/encoded secrets. Install the secret-free askpass helper with 0755
+permissions using a trusted, non-task-writable installation; invalid permissions fail
+closed and are never repaired at runtime. See `CODEX-REVIEW-PHASE3A.md`.

@@ -550,3 +550,31 @@ Hard parent death can still leave a credential child alive: fail-closed database
 recovery prevents duplicate effects but is not process-tree containment. Do not
 claim merge readiness until sandbox and crash containment are independently proven.
 See `docs/CODEX-REVIEW-PHASE3A.md` for evidence, compatibility changes and rollback.
+
+### ADR-013 — Bubblewrap project execution and credential process containment
+
+**Status:** accepted (2026-09-07)
+
+Project commands from a registry are still untrusted code even when their argv is
+server-configured. They run only through `/usr/bin/bwrap` with a new user, PID,
+IPC, UTS and network namespace; a private `/tmp` and `/proc`; a writable mission
+workspace; and a cleared, minimal environment. The sandbox mounts neither `/home`,
+`/srv`, `/run`, `/var`, host configuration nor the workspace parent. It exposes
+only an explicit Node/npm/Python/Pytest/Shell runtime allowlist and read-only shared
+libraries. Missing Bubblewrap, an unsupported command, or a Bubblewrap startup error
+fails closed. Project scripts can write their own workspace and nowhere else.
+
+Credentialed git/gh calls do not share the untrusted-code sandbox. They receive a
+separate Bubblewrap PID namespace with `--die-with-parent`, while the immediate Linux
+child sets `PR_SET_PDEATHSIG=SIGKILL` before exec and rechecks its parent PID. A hard
+death of HufiAgents therefore kills the containment supervisor and terminates every
+credential-bearing descendant in its PID namespace. Normal timeout sends TERM, waits
+two seconds, then KILLs the dedicated process group; cancellation records TERM and
+immediately KILLs/reaps it, because awaiting a grace period in a cancelled coroutine
+can itself be interrupted. Unknown external effects remain fail-closed in gateway
+recovery; a successful push followed by a crash is never repeated automatically.
+
+These controls require a Linux host on which unprivileged Bubblewrap user namespaces
+actually work. The feature is deliberately unavailable on other hosts rather than
+falling back to same-UID execution. See `CODEX-REVIEW-PHASE3A.md` for executable
+boundary and process-tree evidence.

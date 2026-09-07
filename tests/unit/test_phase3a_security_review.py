@@ -181,19 +181,24 @@ async def test_metadata_symlink_and_hardlink_are_rejected(tmp_path):
         validate_metadata(workspace.root)
 
 
-async def test_package_scripts_cannot_execute_with_service_identity(tmp_path):
+async def test_package_scripts_execute_only_inside_the_workspace_sandbox(tmp_path):
     from hufiagents.projects import Project
     from hufiagents.tools.shell import ShellTool
 
     workspace = Workspace(tmp_path)
-    workspace.create("package.json", '{"scripts":{"test":"touch ESCAPED"}}')
+    workspace.create(
+        "package.json",
+        '{"scripts":{"test":"node -e \\"require(\'fs\').writeFileSync(\'ESCAPED\',\'ok\')\\""}}',
+    )
     project = Project(
         id="demo", repo_url="https://github.com/o/r.git", test_command=["/usr/bin/npm", "test"]
     )
     tool = ShellTool(workspace, project=project)
-    with pytest.raises(PermissionError, match="OS sandbox"):
-        await tool.execute(call("run_tests"))
-    assert not (tmp_path / "ESCAPED").exists()
+    result = await tool.execute(call("run_tests"))
+    assert result.exit_code == 0
+    # The script may write its mission checkout, but receives no capability to
+    # write any mount outside it (covered by the adversarial bwrap probe).
+    assert (tmp_path / "ESCAPED").exists()
 
 
 async def test_http_redirect_is_not_followed(tmp_path):
