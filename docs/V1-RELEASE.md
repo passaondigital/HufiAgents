@@ -1,9 +1,24 @@
 # HufiAgents V1.0 — Release Record
 
-**Tag:** `v1.0.0`
+**Tag:** `v1.0.1`
 **Date:** 2026-09-07
 **URL:** https://agents.heyhufi.com
 **Main commit at release:** see `git log --oneline -1` on `main` at tag time.
+
+## v1.0.1 (same day)
+
+`v1.0.0`'s browser login was broken for every real browser: `request_boundary`
+blocked any request carrying an `Origin` header as "cross-origin", but a
+same-origin `fetch()`/XHR write also carries one in modern browsers — so
+every real login attempt got a 403 that `login.html` displayed as
+"Benutzername oder Passwort falsch". `curl`/`TestClient` calls (no `Origin`
+by default) never hit it, which is exactly why the acceptance-test curl
+calls in this document all succeeded while Pascal's own browser login
+failed immediately after handoff. Fixed by comparing the `Origin` header's
+host against the request's own `Host` header instead of just checking
+presence; regression test added
+(`tests/integration/test_web_auth.py::test_same_origin_write_is_allowed_but_cross_origin_is_still_blocked`).
+Deployed as an immediate hotfix, then released properly as `v1.0.1`.
 
 ## What V1.0 is
 
