@@ -346,3 +346,74 @@ locally (never committed — `.env.example` keeps placeholders only, per
 reuses the same `integrator` role or gets its own new registry entry with an
 explicit ceiling — `builder`'s R1 boundary is not the place to special-case
 this. See `docs/PHASE2-GIT-PR-WORKFLOW.md` for the operator-facing runbook.
+
+### ADR-010 — Phase 2B project connector: a server-side project registry,
+### not a caller-supplied repo
+
+**Status:** accepted (2026-09-07)
+
+**Context**
+
+Phase 2B (`docs/ROADMAP.md`) requires HufiAgents to clone a real external
+project (first: `passaondigital/hufmanager`), work on it in an isolated
+branch, run its own test/build/lint, and push/open a PR via the `integrator`
+agent from ADR-009. Until now, `GitTool` only ever operated on a fresh,
+empty, `git init`'d workspace repo (ADR-005) — there was no way to bring an
+existing external codebase into a mission workspace at all, and no per-
+project test/build command existed (`ShellTool` only had a two-command
+closed allowlist, `pwd`/`git_version`).
+
+**Decision**
+
+Add `hufiagents/projects/` — a `ProjectRegistry` reading `config/projects.yaml`
+(mirrors `risk.Policy`'s own pattern): `id -> {repo_url, github_repo,
+default_branch, allowed, test_command, build_command, lint_command}`. A task
+selects a project by `Task.project_id` (new field, opt-in, defaults to
+`None`, validated against the registry at `submit()` time like
+`assigned_agent_id`). `GitTool` gains `clone` (R1) — clones only
+`self.project.repo_url`, never a caller-supplied URL — and `add`/`commit` now
+hard-require the current branch to not be `main`/`master`/the project's
+`default_branch` before executing (checked via `git symbolic-ref --short
+HEAD`, which resolves correctly even before the first commit — `rev-parse
+--abbrev-ref HEAD` does not). `push`'s existing remote check (ADR-009) is
+generalized to also verify the workspace's actual configured `origin` still
+equals the target remote/project URL, not just that some `remote_url` setting
+is non-empty — defense in depth against origin drift. `ShellTool` gains
+`run_tests`/`run_build`/`run_lint`, each executing exactly the registry's own
+pre-registered argv for the active project, never a caller-supplied command.
+A new `Task.dry_run` field (opt-in, default `False`) makes `GitTool.push` and
+`GitHubTool.open_pr` return a synthetic `ok` result describing what would
+have happened, without ever invoking `git push`/`gh pr create` — for
+rehearsing/demonstrating a full pipeline without live push/PR side effects or
+even requiring `HUFI_GITHUB_TOKEN` to be configured.
+
+**Why**
+
+The same anti-exfiltration principle as ADR-009 applies one level up: a
+project's clone source and its test/build/lint commands are exactly as
+sensitive as a push destination (a task that could pick its own `repo_url`
+could clone from — or a caller-controlled build/test command could execute
+arbitrary code as — anywhere), so both stay server-config-only, resolved by
+`project_id`, never accepted from `call.params`. Branch protection is
+re-verified at the tool layer (not just relied upon from `branch`'s existing
+`hufi/` pattern requirement) because `clone` is a new way to *arrive* on a
+protected branch (the project's own default branch) without ever calling
+`branch` — the existing push-time-only check was no longer sufficient once
+`add`/`commit` could also happen while still sitting on that branch.
+
+**Consequences**
+
+`passaondigital/hufmanager` is the only registered project
+(`config/projects.yaml`, `allowed: true`); any other `project_id` is rejected
+identically to an unregistered one (`ProjectRegistry.get` never distinguishes
+"unknown" from "disabled" to a caller). HufManager's own `AGENTS.md` requires
+an agent working *directly inside a checkout of that repo* to follow a
+`CODEXTODO.md` task queue and forbids push/deploy without explicit Pascal
+approval — that governance model is separate from, and not superseded by,
+HufiAgents' own risk/approval engine; this connector's first real mission
+(docs/CONNECTOR-HUFMANAGER.md) stayed strictly read-only/dry-run specifically
+so it never needed to reconcile the two. Cloning an existing repository was
+previously impossible (ADR-005 only covered a fresh empty workspace repo) —
+this ADR extends, not replaces, that isolation model: the clone still lands
+only inside the mission's own workspace directory, hard-scoped exactly as
+before.

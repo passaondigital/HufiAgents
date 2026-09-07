@@ -136,7 +136,7 @@ async def test_github_tool_builds_bounded_argv_and_scoped_env(tmp_path, monkeypa
 
     async def fake_run_process(argv, ws, call_, timeout, extra_env=None):
         calls.append((argv, extra_env))
-        if argv[:2] == ["/usr/bin/git", "rev-parse"]:
+        if argv[:2] == ["/usr/bin/git", "symbolic-ref"]:
             return await real_run_process(argv, ws, call_, timeout, extra_env)
         return call_.model_copy(
             update={"result_status": "ok", "exit_code": 0, "result_summary": "https://pr/1"}

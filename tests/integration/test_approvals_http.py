@@ -52,7 +52,9 @@ def test_approval_http_requires_correct_owner_token(tmp_path):
             agent = tx.agents.get("builder")
             agent.default_risk_ceiling = Risk.R4
             tx.agents.save(agent)
-        client.app.state.engine.tools = lambda workspace: {"files": ApprovalFiles(workspace)}
+        client.app.state.engine.tools = lambda workspace, task=None: {
+            "files": ApprovalFiles(workspace)
+        }
 
         response = client.post(
             "/missions", json={"outcome": "needs approval", "risk_ceiling": "R4"}
