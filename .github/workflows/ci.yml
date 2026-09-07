@@ -19,6 +19,13 @@ jobs:
           sudo apt-get install -y --no-install-recommends bubblewrap
           curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
           sudo apt-get install -y --no-install-recommends nodejs
+          # Ubuntu 24.04's AppArmor policy lets an unprivileged user namespace
+          # be created but then denies it CAP_NET_ADMIN, so bwrap's --unshare-net
+          # (project_argv's untrusted-code network isolation) fails bringing up
+          # loopback ("Failed RTM_NEWADDR: Operation not permitted"). Relaxing
+          # this AppArmor restriction is the standard workaround for running
+          # bwrap in CI; confined to this ephemeral runner VM.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
