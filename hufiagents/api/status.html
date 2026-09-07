@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+<title>HufiAgents · Core V1</title>
+<style>
+body{font:16px system-ui;background:#111827;color:#e5e7eb;max-width:1000px;margin:4rem auto;padding:0 2rem}
+h1{font-size:2.3rem}small{color:#93c5fd}table{width:100%;border-collapse:collapse}
+th,td{text-align:left;padding:1rem;border-bottom:1px solid #374151}a{color:#93c5fd}
+pre{white-space:pre-wrap;background:#1f2937;padding:1rem;border-radius:8px}
+</style>
+<small>LOKAL · CORE V1</small><h1>HufiAgents</h1>
+<p id="health">Verbindung wird geprüft …</p>
+<table><thead><tr><th>Mission</th><th>Status</th><th>Erstellt</th></tr></thead><tbody id="missions"></tbody></table>
+<p>Mission auswählen, um Ergebnis und Audit-Verlauf zu sehen. <a href="/docs">API</a></p>
+<pre id="detail">Noch keine Mission ausgewählt.</pre>
+<script>
+async function detail(id){
+ const [mission,audit]=await Promise.all([fetch('/missions/'+id).then(r=>r.json()),fetch('/audit?mission_id='+id).then(r=>r.json())]);
+ document.getElementById('detail').textContent=JSON.stringify({mission,audit},null,2);
+}
+async function refresh(){try{
+ const health=await fetch('/health').then(r=>r.json());
+ document.getElementById('health').textContent='Bereit · Provider: '+health.provider+' · Parallelität: '+health.max_concurrent_tasks;
+ const missions=await fetch('/missions').then(r=>r.json());
+ const body=document.getElementById('missions');body.replaceChildren();
+ for(const mission of missions){const row=document.createElement('tr');
+ for(const text of [mission.outcome,mission.status,new Date(mission.created_at).toLocaleString()]){
+ const cell=document.createElement('td');cell.textContent=text;row.appendChild(cell);}
+ row.onclick=()=>detail(mission.id);body.appendChild(row);}
+ }catch(error){document.getElementById('health').textContent='Verbindung unterbrochen';}}
+refresh();setInterval(refresh,3000);
+</script></html>

@@ -1,0 +1,30 @@
+# Documentation only: no account or service is installed by the repository.
+[Unit]
+Description=HufiAgents Core V1
+After=network.target
+
+[Service]
+Type=simple
+User=hufiagents
+Group=hufiagents
+WorkingDirectory=/srv/hufiagents
+EnvironmentFile=/srv/hufiagents/.env
+ExecStart=/srv/hufiagents/.venv/bin/hufiagents serve
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths=/srv/hufiagents/run /srv/hufiagents/workspaces
+MemoryMax=384M
+CPUQuota=100%
+TasksMax=64
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

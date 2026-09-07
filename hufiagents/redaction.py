@@ -11,7 +11,12 @@ PATTERNS = [
 
 def redact(value):
     if isinstance(value, dict):
-        return {k: "[REDACTED]" if SENSITIVE.search(k) else redact(v) for k, v in value.items()}
+        return {
+            k: "[REDACTED]"
+            if SENSITIVE.search(k) and k not in {"tokens", "budget_tokens"}
+            else redact(v)
+            for k, v in value.items()
+        }
     if isinstance(value, list):
         return [redact(v) for v in value]
     if isinstance(value, str):

@@ -4,7 +4,7 @@ import asyncio
 import hashlib
 import json
 
-from hufiagents.contracts import ApprovalRequest, State, ToolCall, now
+from hufiagents.contracts import ApprovalRequest, ReviewResult, State, ToolCall, now
 from hufiagents.redaction import redact
 
 
@@ -81,6 +81,29 @@ class ToolGateway:
                 )
                 tx.tool_calls.save(call)
                 tx.log("policy_blocked", task=task, tool_call_id=call.id, decision=decision)
+                if decision == "reviewer_gate":
+                    tx.transition(current, State.review, reason="R2 preflight")
+                    review = ReviewResult(
+                        task_id=task.id,
+                        verdict="reject",
+                        findings=[
+                            {
+                                "severity": "P1",
+                                "summary": "External execution not enabled in V1",
+                                "evidence": call.id,
+                            }
+                        ],
+                    )
+                    tx.reviews.add(review)
+                    tx.log(
+                        "review",
+                        task=task,
+                        actor="reviewer",
+                        verdict="reject",
+                        phase="preflight",
+                        tool_call_id=call.id,
+                    )
+                    tx.transition(current, State.failed, reason="R2 preflight rejected")
         if decision == "approval_required" and not approved:
             raise ApprovalPending()
         if decision in {"denied", "reviewer_gate"}:

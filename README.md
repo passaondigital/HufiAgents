@@ -133,3 +133,21 @@ uv run pytest -q
 ```
 
 Dependencies, including development tools, are pinned in `uv.lock`.
+
+Start the local API and status page (single worker, loopback only):
+
+```sh
+uv run hufiagents serve
+# In another terminal:
+uv run hufiagents submit 'Write a short software test checklist'
+uv run hufiagents list
+uv run hufiagents show MISSION_ID
+uv run hufiagents audit MISSION_ID
+```
+
+Open `http://127.0.0.1:8765/` for status and `/docs` for the API. The default
+provider calls the existing HUFI router; use `HUFI_DEFAULT_PROVIDER=fake uv run
+hufiagents serve` for an entirely offline demo. No model is installed or pulled.
+See [Core V1 runbook](docs/CORE-V1.md) for configuration, boundaries, recovery,
+approval setup and verification. This core creates bounded text/file deliverables;
+arbitrary repository code execution and external publishing remain deferred.
