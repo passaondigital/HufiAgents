@@ -63,3 +63,32 @@ No older PR is to be merged separately. The final integration PR from
 
 Remaining operational work is not a merge blocker: a future trusted dependency-cache
 design is needed before a fresh, networkless HufManager clone can run its dependencies.
+
+## Integration completed (2026-09-07, Claude Code continuation)
+
+PR #4 (`codex/fix-phase3a-hardening` -> `codex/review-phase3a-auth`) and the final
+integration PR #5 (`codex/review-phase3a-auth` -> `main`) are both merged. `main` is
+at `301fd273ecd33932e46cf0783005a9bf7591493a`. PR #3
+(`claude/phase3a-hufmanager-write-e2e`), the original standalone askpass
+implementation, was not merged on its own; GitHub auto-marked it merged once its head
+commit landed on `main` as part of this integration line -- no separate merge action
+was taken.
+
+PR #4's CI was not actually hanging forever: `uv run pytest -q` was failing fast and
+then blocking, because the sandbox/credential boundary (`hufiagents/tools/sandbox.py`)
+fails closed without Bubblewrap, and its `project_argv()` hardcodes a NodeSource-layout
+Node.js (`/usr/bin/node`, `/usr/lib/node_modules/npm/bin/npm-cli.js`) -- the same
+runtime this dev/review host has, which is why it was never caught locally. Neither was
+installed on the GitHub-hosted runner. Once installed, a second failure appeared:
+Ubuntu 24.04's AppArmor policy lets an unprivileged user namespace be created but
+denies it `CAP_NET_ADMIN`, so `bwrap --unshare-net` (both `project_argv`'s untrusted-code
+network isolation and `credential_argv`'s PID-tree containment) could not bring up
+loopback. `.github/workflows/ci.yml` now installs `bubblewrap` and NodeSource Node.js
+22, relaxes that one AppArmor restriction for the ephemeral runner VM, and runs a
+`pytest-timeout` watchdog (60s/test, thread method) plus a 15-minute job timeout so a
+future hang fails fast with a stack trace instead of burning CI minutes silently. Root
+cause was reproduced and the fix verified 249/249 three times in a clean Ubuntu 24.04
+container without Bubblewrap/Node preinstalled, run as a non-root user, before pushing.
+`tests/integration/test_reliability.py::test_heartbeat_and_cancel` (pre-existing, not
+part of this hardening branch) also had its timing assertion widened from 40ms to
+300ms -- a true positive under CI scheduling jitter, not a regression.

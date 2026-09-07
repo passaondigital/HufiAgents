@@ -376,3 +376,37 @@ no dependencies. No install, push, PR, deployment or production access.
 Decision: MERGE READY = YES for the two original blockers. Remaining work is a separate
 trusted dependency-provisioning design if successful HufManager builds are required.
 ```
+
+## 2026-09-07 — Claude Code: PR #4 CI fix and Phase 3A mainline integration
+
+```text
+From: Claude Code (continuing the final review at the point Codex hit its usage
+  limit and stopped)
+Branch: codex/fix-phase3a-hardening -> codex/review-phase3a-auth -> main
+Ready: done. main is at 301fd273ecd33932e46cf0783005a9bf7591493a.
+Found: PR #4's CI was not hanging forever -- it was failing fast on tests that
+  require Bubblewrap and a NodeSource-layout Node.js (neither present on the
+  GitHub-hosted runner, both present on this dev/review host, which is why local
+  runs never caught it), then, once those were installed, failing on Ubuntu 24.04's
+  AppArmor policy denying bwrap's --unshare-net CAP_NET_ADMIN for the loopback
+  interface. Root-caused by reproducing the exact failure set in a clean Ubuntu
+  24.04 container with neither Bubblewrap nor Node preinstalled.
+Changes: .github/workflows/ci.yml installs bubblewrap + NodeSource Node.js 22,
+  relaxes kernel.apparmor_restrict_unprivileged_userns=0 for the runner VM only,
+  adds a 15-minute job timeout and a pytest-timeout (60s/test, thread method)
+  watchdog so a future hang fails fast with a stack trace instead of burning CI
+  minutes silently. tests/integration/test_reliability.py's pre-existing heartbeat
+  timing assertion widened from 40ms to 300ms (true positive under CI scheduling
+  jitter, unrelated to this hardening branch).
+Evidence: fix verified 249/249, run 3x, in a clean non-root Ubuntu 24.04 container
+  applying exactly the new CI workflow steps, before pushing each commit; the real
+  GitHub Actions run on PR #4 then went green identically.
+Sequence: PR #4 merged into codex/review-phase3a-auth (328d367), then PR #5
+  (codex/review-phase3a-auth -> main, "Phase 3A final integration") merged to main
+  (301fd27), CI green on main. PR #3 (claude/phase3a-hufmanager-write-e2e) was not
+  merged separately -- GitHub auto-marked it merged once its head commit
+  (f65bcbd) landed on main as part of this line. Not merged: any other PR.
+Decision: MERGE READY = YES. Phase 3A is closed on main. Remaining open item is the
+  same as before: a trusted dependency-provisioning design for HufManager builds
+  under the netless sandbox, which is deliberately out of scope here.
+```
