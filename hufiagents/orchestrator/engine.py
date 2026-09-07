@@ -18,6 +18,7 @@ from hufiagents.risk import Policy
 from hufiagents.tools.files import FilesTool
 from hufiagents.tools.gateway import ApprovalPending, ToolGateway
 from hufiagents.tools.git import GitTool
+from hufiagents.tools.github import GitHubTool
 from hufiagents.tools.shell import ShellTool
 from hufiagents.tools.workspace import Workspace
 
@@ -45,12 +46,16 @@ class Orchestrator:
 
     def submit(self, request):
         mission, tasks = self.planner.plan(request)
-        # Validate paths before persisting or dispatching a task.
+        # Validate paths and any explicit agent request before persisting or
+        # dispatching a task, so a bad request fails at submit time (409) and
+        # never reaches a background executor.
         for task, _ in tasks:
             if not task.expected_output or task.expected_output.startswith("/"):
                 raise ValueError("expected_output must be a relative artifact path")
             if any(p in {"..", ".git", ".env", ".ssh"} for p in task.expected_output.split("/")):
                 raise ValueError("unsafe artifact path")
+            if task.assigned_agent_id is not None:
+                self.registry.get(task.assigned_agent_id)
         with self.store.transaction() as tx:
             pending = tx.tasks.list(
                 status=set(State) - TERMINAL, limit=self.settings.max_pending_tasks
@@ -153,9 +158,9 @@ class Orchestrator:
                     task = tx.tasks.get(identifier)
                     if task.status == State.queued:
                         tx.transition(task, State.planning)
-                        task.assigned_agent_id = "builder"
+                        task.assigned_agent_id = task.assigned_agent_id or "builder"
                         tx.tasks.save(task)
-                        tx.log("agent_assigned", task=task, actor="builder")
+                        tx.log("agent_assigned", task=task, actor=task.assigned_agent_id)
                         tx.transition(task, State.running)
                 async with asyncio.timeout(task.budget_seconds or 300):
                     await self._execute(identifier)
@@ -296,7 +301,18 @@ class Orchestrator:
         return {
             "files": FilesTool(workspace),
             "shell": ShellTool(workspace, self.settings.tool_timeout_seconds),
-            "git": GitTool(workspace, self.settings.tool_timeout_seconds),
+            "git": GitTool(
+                workspace,
+                self.settings.tool_timeout_seconds,
+                remote_url=self.settings.git_remote_url,
+            ),
+            "github": GitHubTool(
+                workspace,
+                self.settings.tool_timeout_seconds,
+                repo=self.settings.github_repo,
+                base_branch=self.settings.github_base_branch,
+                token=self.settings.github_token.get_secret_value(),
+            ),
         }
 
     def _fail(self, identifier, exc):

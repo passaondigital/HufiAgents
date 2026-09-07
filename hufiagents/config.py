@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     approval_timeout_seconds: float = Field(86400, gt=0)
     approval_token: SecretStr = SecretStr("")
     risk_policy_path: Path = Path("config/risk_policy.yaml")
+    # Phase 2 git/PR workflow: empty (default) disables push/PR entirely. Never
+    # taken from a task/agent-supplied param -- only Pascal's own config chooses
+    # the destination, so a task can never redirect a push/PR to another target.
+    git_remote_url: str = ""
+    github_repo: str = ""
+    github_base_branch: str = "main"
+    github_token: SecretStr = SecretStr("")
 
     @model_validator(mode="after")
     def heartbeat_order(self):

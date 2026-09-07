@@ -6,8 +6,11 @@ from hufiagents.contracts import ToolResult, now
 from hufiagents.redaction import redact
 
 
-async def run_process(argv, workspace, call, timeout=30):
+async def run_process(argv, workspace, call, timeout=30, extra_env=None):
     # No inherited credentials, PATH overrides, Git config or Python/npm hooks.
+    # extra_env is for narrow, caller-controlled additions (e.g. a scoped
+    # GH_TOKEN) -- it is layered on top of, and can only add to, this fixed
+    # baseline; it never comes from task/agent-supplied params.
     process = await asyncio.create_subprocess_exec(
         *argv,
         cwd=workspace.root,
@@ -18,6 +21,7 @@ async def run_process(argv, workspace, call, timeout=30):
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_CONFIG_GLOBAL": "/dev/null",
             "GIT_TERMINAL_PROMPT": "0",
+            **(extra_env or {}),
         },
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,

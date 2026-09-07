@@ -92,3 +92,53 @@ Need from receiver: merge/integrate claude/review-core-v1; Codex to pick up Phas
   docs/ROADMAP.md and docs/REVIEW-CORE-V1.md's "Empfehlung für nächsten Schritt".
 Acceptance criteria: docs/REVIEW-CORE-V1.md "V1-Core-Status" and "Empfehlung für nächsten Schritt".
 ```
+
+## 2026-09-07 — Claude Code -> Pascal/Codex — Phase 2 git push / PR workflow
+
+```text
+Date: 2026-09-07
+From: Claude Code (Architect & Reliability Lead), branch claude/phase2-git-pr-workflow
+  (fresh worktree off origin/main @ c709f0c, not claude/review-core-v1)
+To: Pascal / Codex
+Task/Issue: Phase 2 item 1 (docs/ROADMAP.md) -- Git-Worktree/PR-Workflow automation
+Ready: yes -- implemented, tested, documented; opening a PR rather than fast-forwarding
+  main directly, since this changes agent capabilities (docs/OPERATING_MODEL.md
+  "Pull requests for integration and review").
+Files/interfaces changed:
+  - hufiagents/tools/git.py: real `push`/`remote_add` actions (previously hard-disabled)
+  - hufiagents/tools/github.py (new): `open_pr` only, via `gh`, draft PRs
+  - hufiagents/orchestrator/registry.py: new `integrator` agent (R2 ceiling); `builder`
+    unchanged (R1, still cannot push -- proven by a dedicated test)
+  - hufiagents/orchestrator/planner.py + engine.py: TaskSpec.agent_id / Task.assigned_agent_id
+    routing, defaults to "builder" (unchanged behavior when omitted), validated at submit()
+  - hufiagents/config.py: HUFI_GIT_REMOTE_URL / HUFI_GITHUB_REPO / HUFI_GITHUB_BASE_BRANCH /
+    HUFI_GITHUB_TOKEN, all empty/disabled by default
+  - hufiagents/tools/process.py: run_process() gained an additive, optional extra_env
+  - config/risk_policy.yaml: git.push + github.open_pr added to r2_auto_allow
+  - docs/DECISIONS.md ADR-009, docs/PHASE2-GIT-PR-WORKFLOW.md (new runbook)
+Tests run: uv run ruff check/format --check (clean), uv run pytest -q (169/169, was 156;
+  13 new -- tests/unit/test_git_pr_workflow.py, tests/integration/test_git_pr_workflow_e2e.py
+  -- including a real push to a disposable local bare repo, a real subprocess branch check,
+  and a least-privilege proof that `builder` cannot push even with a remote configured),
+  uv build (clean). Non-mutating live check only (`gh api user`, `gh repo view
+  passaondigital/HufiAgents`) confirms auth/reachability -- no real PR was opened.
+Known risks: see docs/PHASE2-GIT-PR-WORKFLOW.md "Boundaries" and ADR-009 "Consequences".
+  Cloning an existing external repository into a mission workspace is explicitly NOT
+  implemented here -- left for the HufManager-connector workstream to avoid overlap.
+Need from receiver: review + merge decision on claude/phase2-git-pr-workflow. When the
+  HufManager connector needs to push real changes, point it at the `integrator` agent and
+  the same Settings fields rather than deriving a second capability path.
+Acceptance criteria: docs/ROADMAP.md Phase 2 exit ("HufiAgents can complete a bounded real
+  repository task and prepare a verified PR") -- push mechanics proven end-to-end against a
+  real (local, disposable) remote; PR creation unit-proven against a stubbed gh call plus a
+  live non-mutating auth check, not yet a real PR against a production repo (deliberately,
+  pending Pascal's go-ahead on a target).
+```
+
+Coordination note: this session (`administrator-8e`) and a second parallel session
+(`administrator-da`, HufManager connector) were both released into Phase 2 by Pascal in the
+same message. Task split and worktree separation (this branch's worktree is new, at
+`/home/administrator/HufiAgents-phase2-git-pr`, not the shared one from the review task)
+were coordinated directly between the sessions before either wrote code, per Pascal's new
+standing rule (no two sessions in the same worktree/branch) — see `docs/REVIEW-CORE-V1.md`
+"Verbleibende Risiken" for the incident that prompted that rule.
