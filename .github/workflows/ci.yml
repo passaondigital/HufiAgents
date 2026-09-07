@@ -9,6 +9,16 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           version: '0.12.10'
+      # Phase 3A's sandbox/credential boundary (hufiagents/tools/sandbox.py)
+      # fails closed without Bubblewrap, and its project_argv() hardcodes a
+      # NodeSource-layout Node.js (/usr/bin/node, /usr/lib/node_modules/npm)
+      # -- the same runtime the dev/reference environment uses. Ubuntu's own
+      # nodejs/npm apt packages use a different layout and are not enough.
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends bubblewrap
+          curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+          sudo apt-get install -y --no-install-recommends nodejs
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
