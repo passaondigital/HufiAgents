@@ -43,7 +43,10 @@ class Rows:
             query = query.where(
                 column.in_(value) if isinstance(value, (list, set)) else column == value
             )
-        order = self.table.c.get("created_at", self.table.c.get("ts", self.table.c.id))
+        order = self.table.c.get(
+            "created_at",
+            self.table.c.get("requested_at", self.table.c.get("ts", self.table.c.id)),
+        )
         rows = self.connection.execute(
             query.order_by(order, self.table.c.id).limit(limit).offset(offset)
         )

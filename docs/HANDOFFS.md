@@ -52,4 +52,43 @@ Acceptance criteria: docs/ARCHITECTURE.md §13 (first end-to-end proof) and
   docs/HANDOFF-CODEX-V1.md "Definition of done for Phase 1".
 ```
 
-No earlier handoffs recorded.
+## 2026-09-07 — Claude Code -> Codex/Pascal — Core V1 review complete
+
+```text
+Date: 2026-09-07
+From: Claude Code (Review Lead), branch claude/review-core-v1 (based on origin/codex/core-v1 @ 894fd93)
+To: Codex, Pascal
+Task/Issue: Full review of Codex core-v1 against docs/ARCHITECTURE.md, docs/SECURITY.md,
+  docs/HANDOFF-CODEX-V1.md; run ruff/pytest/build; add missing tests; fix low/medium findings;
+  run a real local-Qwen E2E test; write docs/REVIEW-CORE-V1.md.
+Ready: yes — see docs/REVIEW-CORE-V1.md for the full report. Verdict: merge-ready.
+Files/interfaces changed:
+  - hufiagents/persistence/repository.py: fixed Rows.list() order fallback
+    (created_at -> requested_at -> ts -> id); ToolCall/ApprovalRequest were silently
+    ordered by random UUID before this (found by a parallel review session, verified here).
+  - hufiagents/config.py + orchestrator/engine.py + .env.example: added
+    poll_interval_seconds (default unchanged, 0.1s) so the scheduler loop is tunable
+    instead of hardcoded.
+  - docs/REVIEW-CORE-V1.md: new, full review report.
+  - 7 new/extended test files (24 new tests, 132 -> 156 total): test_redaction.py,
+    test_reserved.py, test_memory.py, test_approvals_http.py (this session), plus
+    test_cli.py, test_gateway_reconciliation.py, and an extension of
+    test_persistence.py (parallel session, folded in and verified here).
+Tests run: uv run ruff check . (clean), uv run ruff format --check . (clean),
+  uv run pytest -q (156 passed), uv build (wheel + sdist built), a real local-model
+  E2E mission against the live http://127.0.0.1:8090 router (completed in ~3s,
+  verified via /audit and the router's /router/status request counter), and the
+  existing real-process-crash restart test (tests/e2e/test_restart.py, both stages).
+Known risks:
+  - POST /tasks/{id}/cancel has no owner-token auth, unlike approve/deny. Accepted as
+    documented V1 loopback-dev scope; recommend gating before any remote exposure.
+  - hufiagents/memory/ (Memory.put, read_global) is implemented and now tested but not
+    wired into the orchestrator yet — inert by design until Phase 2 decides to use it.
+  - Two Claude Code sessions ran concurrently on this exact task in the same worktree
+    (Pascal started both); no work was lost, one found a real bug, but it was
+    accidental — see docs/REVIEW-CORE-V1.md "Coordination note".
+Need from receiver: merge/integrate claude/review-core-v1; Codex to pick up Phase 2
+  (git worktree/PR automation, HufManager as first real project) per
+  docs/ROADMAP.md and docs/REVIEW-CORE-V1.md's "Empfehlung für nächsten Schritt".
+Acceptance criteria: docs/REVIEW-CORE-V1.md "V1-Core-Status" and "Empfehlung für nächsten Schritt".
+```

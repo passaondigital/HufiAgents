@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:8b"
     max_concurrent_tasks: int = Field(2, ge=1, le=8)
+    poll_interval_seconds: float = Field(0.1, gt=0, le=5)
     max_pending_tasks: int = Field(100, ge=1, le=10000)
     heartbeat_timeout_seconds: float = Field(120, gt=0)
     heartbeat_interval_seconds: float = Field(30, gt=0)

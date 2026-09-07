@@ -90,7 +90,7 @@ class Orchestrator:
         while not self.stopping:
             self.recover()
             await self.tick()
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(self.settings.poll_interval_seconds)
 
     async def tick(self):
         for identifier, runner in list(self.active.items()):
