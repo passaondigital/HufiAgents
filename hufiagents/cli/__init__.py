@@ -22,8 +22,17 @@ def main():
     if args.command == "serve":
         import uvicorn
 
+        from hufiagents.config import Settings
+
+        # Loopback-only, always -- a reverse proxy is the only public
+        # listener (docs/V1-OPERATIONS.md). Port comes from Settings
+        # (HUFI_PORT) so multiple environments never need code changes.
         uvicorn.run(
-            "hufiagents.api:create_app", factory=True, host="127.0.0.1", port=8765, workers=1
+            "hufiagents.api:create_app",
+            factory=True,
+            host="127.0.0.1",
+            port=Settings().port,
+            workers=1,
         )
         return
     with httpx.Client(base_url=args.url, timeout=15, trust_env=False) as client:

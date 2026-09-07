@@ -3,19 +3,29 @@ import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+import httpx
+from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
+from hufiagents import auth
 from hufiagents.config import Settings
 from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
+from hufiagents.projects import ProjectRegistry
+
+PUBLIC_PATHS = {"/health", "/login"}
 
 
 class Resolution(BaseModel):
     note: str = Field("", max_length=2000)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=200)
+    password: str = Field(min_length=1, max_length=200)
 
 
 def create_app(settings=None, providers=None):
@@ -66,6 +76,28 @@ def create_app(settings=None, providers=None):
                 return JSONResponse({"detail": "request too large"}, status_code=413)
         return await call_next(request)
 
+    # V1 login gate (hufiagents/auth.py, docs/DECISIONS.md ADR-015). A no-op
+    # when auth isn't configured (settings.auth_enabled is False), which is
+    # true for every existing test and for `fake`-provider local dev --
+    # nothing about this middleware can regress a deployment that never opts
+    # into it. /health always stays public so a load balancer/monitor never
+    # needs credentials.
+    @app.middleware("http")
+    async def auth_gate(request: Request, call_next):
+        if settings.auth_enabled and request.url.path not in PUBLIC_PATHS:
+            session_cookie = request.cookies.get(auth.COOKIE_NAME)
+            username = (
+                auth.verify_session(session_cookie, settings.session_secret.get_secret_value())
+                if session_cookie
+                else None
+            )
+            if not username:
+                if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
+                    return RedirectResponse("/login", status_code=303)
+                return JSONResponse({"detail": "authentication required"}, status_code=401)
+            request.state.username = username
+        return await call_next(request)
+
     @app.exception_handler(KeyError)
     async def missing(request, exc):
         return JSONResponse({"detail": "resource not found"}, status_code=404)
@@ -84,7 +116,42 @@ def create_app(settings=None, providers=None):
             "status": "ok",
             "provider": settings.default_provider,
             "max_concurrent_tasks": settings.max_concurrent_tasks,
+            "auth_enabled": settings.auth_enabled,
         }
+
+    @app.get("/login", response_class=HTMLResponse)
+    async def login_page():
+        if not settings.auth_enabled:
+            return RedirectResponse("/")
+        return Path(__file__).with_name("login.html").read_text()
+
+    @app.post("/login")
+    async def login(body: LoginRequest, response: Response):
+        if not settings.auth_enabled:
+            raise HTTPException(404, "authentication not configured")
+        valid = hmac.compare_digest(
+            body.username, settings.admin_username
+        ) and auth.verify_password(body.password, settings.admin_password_hash.get_secret_value())
+        if not valid:
+            raise HTTPException(401, "invalid credentials")
+        token = auth.issue_session(
+            settings.admin_username, settings.session_secret.get_secret_value()
+        )
+        response.set_cookie(
+            auth.COOKIE_NAME,
+            token,
+            httponly=True,
+            secure=settings.cookie_secure,
+            samesite="lax",
+            max_age=auth.SESSION_TTL_SECONDS,
+            path="/",
+        )
+        return {"status": "ok"}
+
+    @app.post("/logout")
+    async def logout(response: Response):
+        response.delete_cookie(auth.COOKIE_NAME, path="/")
+        return {"status": "ok"}
 
     @app.get("/", response_class=HTMLResponse)
     async def status():
@@ -126,12 +193,76 @@ def create_app(settings=None, providers=None):
         with app.state.store.transaction() as tx:
             return tx.agents.list()
 
+    @app.get("/projects")
+    async def projects():
+        registry = ProjectRegistry(settings.projects_path)
+        return [
+            {
+                "id": project.id,
+                "repo_url": project.repo_url,
+                "github_repo": project.github_repo,
+                "default_branch": project.default_branch,
+                "allowed": project.allowed,
+                "has_test": bool(project.test_command),
+                "has_build": bool(project.build_command),
+                "has_lint": bool(project.lint_command),
+            }
+            for project in registry.projects.values()
+        ]
+
+    @app.get("/models")
+    async def models():
+        provider_health = []
+        for provider_id, provider in app.state.engine.providers.items():
+            health = await provider.health()
+            provider_health.append(
+                {
+                    "provider": provider_id,
+                    "selected": provider_id == settings.default_provider,
+                    "healthy": health.available,
+                    "reason": health.reason,
+                    "model": getattr(provider, "model", None),
+                }
+            )
+        router = None
+        default = app.state.engine.providers.get(settings.default_provider)
+        base_url = getattr(default, "base_url", None)
+        if base_url:
+            try:
+                async with httpx.AsyncClient(trust_env=False, timeout=5) as client:
+                    models_response = await client.get(base_url + "/models")
+                    models_response.raise_for_status()
+                    status_response = await client.get(
+                        base_url.removesuffix("/v1") + "/router/status"
+                    )
+                    status_response.raise_for_status()
+                    router = {
+                        "base_url": base_url,
+                        "models": [m["id"] for m in models_response.json().get("data", [])],
+                        "status": status_response.json(),
+                    }
+            except (httpx.HTTPError, ValueError):
+                router = {"base_url": base_url, "error": "router unreachable"}
+        return {
+            "default_provider": settings.default_provider,
+            "providers": provider_health,
+            "router": router,
+        }
+
     @app.get("/approvals")
     async def approvals(limit: int = Query(100, ge=1, le=100), offset: int = Query(0, ge=0)):
         with app.state.store.transaction() as tx:
             return tx.approvals.list(limit=limit, offset=offset)
 
-    def resolve(identifier, body, authorization, status):
+    def resolve(request, identifier, body, authorization, status):
+        # A logged-in session (docs/DECISIONS.md ADR-015) already proves this
+        # is Pascal, via the browser UI -- it satisfies the same owner-only
+        # bar the separate Bearer approval_token exists for, without making
+        # the UI hold a second secret. approval_token remains the only path
+        # when web auth isn't configured (existing tests, script/API use).
+        if settings.auth_enabled and getattr(request.state, "username", None):
+            app.state.engine.resolve(identifier, status, body.note)
+            return {"status": status}
         token = settings.approval_token.get_secret_value()
         if not token:
             raise HTTPException(503, "approval resolution disabled; configure owner token")
@@ -141,12 +272,22 @@ def create_app(settings=None, providers=None):
         return {"status": status}
 
     @app.post("/approvals/{identifier}/approve")
-    async def approve(identifier: str, body: Resolution, authorization: str | None = Header(None)):
-        return resolve(identifier, body, authorization, "approved")
+    async def approve(
+        request: Request,
+        identifier: str,
+        body: Resolution,
+        authorization: str | None = Header(None),
+    ):
+        return resolve(request, identifier, body, authorization, "approved")
 
     @app.post("/approvals/{identifier}/deny")
-    async def deny(identifier: str, body: Resolution, authorization: str | None = Header(None)):
-        return resolve(identifier, body, authorization, "denied")
+    async def deny(
+        request: Request,
+        identifier: str,
+        body: Resolution,
+        authorization: str | None = Header(None),
+    ):
+        return resolve(request, identifier, body, authorization, "denied")
 
     @app.get("/audit")
     async def audit(

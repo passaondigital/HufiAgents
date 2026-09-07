@@ -1,31 +1,637 @@
 <!doctype html>
-<html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-<title>HufiAgents · Core V1</title>
+<html lang="de">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HufiAgents</title>
 <style>
-body{font:16px system-ui;background:#111827;color:#e5e7eb;max-width:1000px;margin:4rem auto;padding:0 2rem}
-h1{font-size:2.3rem}small{color:#93c5fd}table{width:100%;border-collapse:collapse}
-th,td{text-align:left;padding:1rem;border-bottom:1px solid #374151}a{color:#93c5fd}
-pre{white-space:pre-wrap;background:#1f2937;padding:1rem;border-radius:8px}
+  :root {
+    color-scheme: dark;
+    --bg: #0b1120;
+    --panel: #111827;
+    --border: #1f2937;
+    --text: #e5e7eb;
+    --muted: #9ca3af;
+    --accent: #3b82f6;
+    --accent-soft: #93c5fd;
+    --ok: #34d399;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --idle: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font: 15px/1.5 system-ui, -apple-system, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    flex-wrap: wrap;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 1.15rem; margin: 0 1rem 0 0; white-space: nowrap; }
+  nav { display: flex; gap: .25rem; flex-wrap: wrap; }
+  nav a {
+    color: var(--muted);
+    text-decoration: none;
+    padding: .4rem .7rem;
+    border-radius: 6px;
+    font-size: .9rem;
+  }
+  nav a:hover { background: #1f2937; color: var(--text); }
+  nav a.active { background: var(--accent); color: white; }
+  header .spacer { flex: 1; }
+  header #conn { font-size: .8rem; color: var(--muted); margin-right: .75rem; }
+  header button {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: .35rem .7rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: .85rem;
+  }
+  header button:hover { color: var(--text); border-color: var(--muted); }
+  main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
+  h2 { font-size: 1.3rem; margin: 0 0 1rem; }
+  h3 { font-size: 1rem; color: var(--accent-soft); margin: 1.5rem 0 .5rem; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: .75rem; margin-bottom: 1.5rem; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 1rem 1.1rem;
+  }
+  .card .n { font-size: 1.8rem; font-weight: 600; }
+  .card .l { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 1.5rem; }
+  th, td { text-align: left; padding: .55rem .6rem; border-bottom: 1px solid var(--border); font-size: .9rem; vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: .78rem; text-transform: uppercase; letter-spacing: .03em; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover { background: #161f2e; }
+  .badge {
+    display: inline-block;
+    padding: .15rem .5rem;
+    border-radius: 999px;
+    font-size: .75rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .badge.ok, .badge.completed, .badge.approved, .badge.healthy { background: rgba(52,211,153,.15); color: var(--ok); }
+  .badge.bad, .badge.failed, .badge.denied, .badge.error, .badge.unhealthy { background: rgba(248,113,113,.15); color: var(--bad); }
+  .badge.warn, .badge.waiting_approval, .badge.pending, .badge.retrying, .badge.blocked { background: rgba(251,191,36,.15); color: var(--warn); }
+  .badge.idle, .badge.cancelled, .badge.expired { background: rgba(107,114,128,.15); color: var(--idle); }
+  .badge.running, .badge.queued, .badge.planning, .badge.review { background: rgba(59,130,246,.15); color: var(--accent-soft); }
+  .empty { color: var(--muted); padding: 1rem 0; font-style: italic; }
+  form.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 1.25rem; margin-bottom: 1.5rem; }
+  label { display: block; font-size: .82rem; color: var(--muted); margin: .9rem 0 .3rem; }
+  label:first-child { margin-top: 0; }
+  textarea, input[type=text], select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: .6rem .7rem;
+    font: inherit;
+  }
+  textarea { min-height: 110px; resize: vertical; }
+  .row { display: flex; gap: 1rem; flex-wrap: wrap; }
+  .row > * { flex: 1; min-width: 160px; }
+  .checkbox-row { display: flex; align-items: center; gap: .5rem; margin-top: 1rem; }
+  .checkbox-row input { width: auto; }
+  button.primary {
+    margin-top: 1.25rem;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: .65rem 1.3rem;
+    border-radius: 8px;
+    font-size: .95rem;
+    cursor: pointer;
+  }
+  button.primary:hover { background: #2563eb; }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.small {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: .3rem .7rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: .82rem;
+  }
+  button.small.approve { border-color: var(--ok); color: var(--ok); }
+  button.small.deny { border-color: var(--bad); color: var(--bad); }
+  button.small:hover { opacity: .8; }
+  #formMsg { font-size: .85rem; margin-top: .75rem; min-height: 1.2rem; }
+  #formMsg.err { color: var(--bad); }
+  #formMsg.ok { color: var(--ok); }
+  .kv { display: grid; grid-template-columns: 160px 1fr; gap: .4rem .75rem; margin-bottom: 1.25rem; font-size: .9rem; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; word-break: break-word; }
+  pre.result {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: .88rem;
+  }
+  details { margin: .5rem 0 1.5rem; }
+  details summary { cursor: pointer; color: var(--accent-soft); font-size: .85rem; }
+  details pre { background: #0b1120; border: 1px solid var(--border); border-radius: 8px; padding: .9rem; overflow-x: auto; font-size: .8rem; }
+  .timeline { list-style: none; margin: 0 0 1.5rem; padding: 0; border-left: 2px solid var(--border); }
+  .timeline li { position: relative; padding: 0 0 1.1rem 1.25rem; }
+  .timeline li::before {
+    content: "";
+    position: absolute;
+    left: -6px;
+    top: .3rem;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+  .timeline li.bad::before { background: var(--bad); }
+  .timeline li.ok::before { background: var(--ok); }
+  .timeline li.warn::before { background: var(--warn); }
+  .timeline .t { color: var(--muted); font-size: .78rem; }
+  .timeline .s { font-weight: 500; }
+  .back { color: var(--accent-soft); text-decoration: none; font-size: .85rem; display: inline-block; margin-bottom: 1rem; }
+  select.mission-picker { max-width: 380px; margin-bottom: 1rem; }
+  .muted { color: var(--muted); }
 </style>
-<small>LOKAL · CORE V1</small><h1>HufiAgents</h1>
-<p id="health">Verbindung wird geprüft …</p>
-<table><thead><tr><th>Mission</th><th>Status</th><th>Erstellt</th></tr></thead><tbody id="missions"></tbody></table>
-<p>Mission auswählen, um Ergebnis und Audit-Verlauf zu sehen. <a href="/docs">API</a></p>
-<pre id="detail">Noch keine Mission ausgewählt.</pre>
+<body>
+  <header>
+    <h1>HufiAgents</h1>
+    <nav id="nav">
+      <a href="#/dashboard" data-route="dashboard">Dashboard</a>
+      <a href="#/new" data-route="new">Mission erstellen</a>
+      <a href="#/agents" data-route="agents">Agents</a>
+      <a href="#/projects" data-route="projects">Projects</a>
+      <a href="#/models" data-route="models">Models</a>
+      <a href="#/approvals" data-route="approvals">Approvals</a>
+      <a href="#/audit" data-route="audit">Audit</a>
+      <a href="#/system" data-route="system">System</a>
+    </nav>
+    <div class="spacer"></div>
+    <span id="conn"></span>
+    <button id="logoutBtn">Abmelden</button>
+  </header>
+  <main id="app"></main>
+
 <script>
-async function detail(id){
- const [mission,audit]=await Promise.all([fetch('/missions/'+id).then(r=>r.json()),fetch('/audit?mission_id='+id).then(r=>r.json())]);
- document.getElementById('detail').textContent=JSON.stringify({mission,audit},null,2);
+const app = document.getElementById('app');
+const conn = document.getElementById('conn');
+
+async function api(path, opts) {
+  const response = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...opts,
+  });
+  if (response.status === 401) {
+    window.location.href = '/login';
+    throw new Error('unauthenticated');
+  }
+  conn.textContent = 'verbunden';
+  if (!response.ok) {
+    let detail = response.statusText;
+    try { detail = (await response.json()).detail || detail; } catch (e) {}
+    throw new Error(detail);
+  }
+  if (response.status === 204) return null;
+  return response.json();
 }
-async function refresh(){try{
- const health=await fetch('/health').then(r=>r.json());
- document.getElementById('health').textContent='Bereit · Provider: '+health.provider+' · Parallelität: '+health.max_concurrent_tasks;
- const missions=await fetch('/missions').then(r=>r.json());
- const body=document.getElementById('missions');body.replaceChildren();
- for(const mission of missions){const row=document.createElement('tr');
- for(const text of [mission.outcome,mission.status,new Date(mission.created_at).toLocaleString()]){
- const cell=document.createElement('td');cell.textContent=text;row.appendChild(cell);}
- row.onclick=()=>detail(mission.id);body.appendChild(row);}
- }catch(error){document.getElementById('health').textContent='Verbindung unterbrochen';}}
-refresh();setInterval(refresh,3000);
-</script></html>
+
+function esc(value) {
+  return String(value ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function badge(value) {
+  return `<span class="badge ${esc(value)}">${esc(value)}</span>`;
+}
+
+function fmtTime(value) {
+  if (!value) return '—';
+  return new Date(value).toLocaleString('de-DE');
+}
+
+function el(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return div.firstElementChild;
+}
+
+const ACTIVE_STATUSES = ['queued', 'planning', 'running', 'retrying', 'review', 'blocked'];
+const EVENT_LABELS = {
+  mission_created: 'Mission erstellt',
+  task_created: 'Task erstellt',
+  project_bound: 'Projekt verbunden',
+  agent_assigned: 'Agent zugewiesen',
+  model_call: 'Modell angefragt',
+  model_result: 'Modell hat geantwortet',
+  tool_call: 'Tool-Aufruf angefordert',
+  tool_started: 'Tool gestartet',
+  tool_result: 'Tool-Ergebnis',
+  tool_reused: 'Tool-Ergebnis wiederverwendet (idempotent)',
+  review: 'Reviewer-Prüfung',
+  approval_requested: 'Freigabe angefragt',
+  approval_resolved: 'Freigabe entschieden',
+  policy_blocked: 'Von Policy blockiert',
+  state_transition: 'Statuswechsel',
+  recovery: 'Wiederherstellung nach Neustart',
+  error: 'Fehler',
+  executor_error: 'Ausführungsfehler',
+  executor_interrupted: 'Ausführung unterbrochen',
+  agent_registered: 'Agent registriert',
+};
+
+function eventTone(type) {
+  if (['error', 'executor_error', 'policy_blocked'].includes(type)) return 'bad';
+  if (['approval_requested', 'executor_interrupted', 'recovery'].includes(type)) return 'warn';
+  if (['tool_result', 'review', 'approval_resolved', 'state_transition'].includes(type)) return 'ok';
+  return '';
+}
+
+function eventSummary(event) {
+  const d = event.detail || {};
+  switch (event.event_type) {
+    case 'state_transition': return `${d.source ?? '?'} → ${d.target ?? '?'}${d.reason ? ' (' + d.reason + ')' : ''}`;
+    case 'tool_call': return `${d.tool}.${d.action} auf ${d.target} · ${d.policy_decision}`;
+    case 'tool_result': return `Status: ${d.status}${d.exit_code != null ? ' · exit ' + d.exit_code : ''}`;
+    case 'model_call': return `${d.provider} · ${d.reason ?? ''}`;
+    case 'model_result': return `${d.provider} / ${d.model} · ${d.tokens ?? '?'} tokens`;
+    case 'review': return `Verdict: ${d.verdict}${d.phase ? ' (' + d.phase + ')' : ''}`;
+    case 'approval_requested': return `Risiko ${d.risk_class} · Approval ${d.approval_id}`;
+    case 'approval_resolved': return `${d.status} von ${event.actor}`;
+    case 'policy_blocked': return `Entscheidung: ${d.decision}`;
+    case 'project_bound': return `${d.project_id} (${d.repo_url})`;
+    case 'agent_assigned': return `${event.actor}`;
+    case 'recovery': return d.reason ?? '';
+    case 'error': case 'executor_error': return d.error ?? '';
+    default: return '';
+  }
+}
+
+function timelineHtml(events) {
+  if (!events.length) return '<p class="empty">Keine Audit-Ereignisse.</p>';
+  return `<ul class="timeline">${events.map((e) => `
+    <li class="${eventTone(e.event_type)}">
+      <div class="t">${fmtTime(e.ts)} · ${esc(e.actor)}</div>
+      <div class="s">${esc(EVENT_LABELS[e.event_type] || e.event_type)}</div>
+      <div class="muted">${esc(eventSummary(e))}</div>
+      <details><summary>Details</summary><pre>${esc(JSON.stringify(e, null, 2))}</pre></details>
+    </li>`).join('')}</ul>`;
+}
+
+// ---------- Routing ----------
+const routes = {};
+function route(name, handler) { routes[name] = handler; }
+
+async function render() {
+  const hash = window.location.hash.replace(/^#\/?/, '') || 'dashboard';
+  const [name, ...rest] = hash.split('/');
+  document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === name));
+  const handler = routes[name] || routes.dashboard;
+  app.innerHTML = '<p class="empty">Lädt …</p>';
+  try {
+    await handler(...rest);
+  } catch (error) {
+    app.innerHTML = `<p class="empty">Fehler: ${esc(error.message)}</p>`;
+    conn.textContent = 'Verbindung unterbrochen';
+  }
+}
+window.addEventListener('hashchange', render);
+
+// ---------- Dashboard ----------
+route('dashboard', async () => {
+  const [health, missions, approvals, agents, models] = await Promise.all([
+    api('/health'), api('/missions?limit=50'), api('/approvals?limit=50'),
+    api('/agents'), api('/models'),
+  ]);
+  const active = missions.filter((m) => ACTIVE_STATUSES.includes(m.status));
+  const pendingApprovals = approvals.filter((a) => a.status === 'pending');
+  const recentDone = missions.filter((m) => m.status === 'completed').slice(0, 5);
+  const recentFailed = missions.filter((m) => m.status === 'failed').slice(0, 5);
+  app.innerHTML = `
+    <h2>Dashboard</h2>
+    <div class="grid">
+      <div class="card"><div class="n">${badge('ok')} ${esc(health.status)}</div><div class="l">System</div></div>
+      <div class="card"><div class="n">${active.length}</div><div class="l">Aktive Missionen</div></div>
+      <div class="card"><div class="n">${pendingApprovals.length}</div><div class="l">Offene Approvals</div></div>
+      <div class="card"><div class="n">${agents.filter(a=>a.status==='active').length}</div><div class="l">Agenten aktiv</div></div>
+      <div class="card"><div class="n">${models.providers.filter(p=>p.healthy).length}/${models.providers.length}</div><div class="l">Modelle gesund</div></div>
+    </div>
+    <h3>Aktive Missionen</h3>
+    <div id="activeMissions"></div>
+    <h3>Offene Approvals</h3>
+    <div id="pendingApprovals"></div>
+    <h3>Letzte Ergebnisse</h3>
+    <div id="recentDone"></div>
+    <h3>Letzte Fehler</h3>
+    <div id="recentFailed"></div>
+  `;
+  document.getElementById('activeMissions').replaceChildren(missionTable(active));
+  document.getElementById('pendingApprovals').replaceChildren(approvalTable(pendingApprovals));
+  document.getElementById('recentDone').replaceChildren(missionTable(recentDone));
+  document.getElementById('recentFailed').replaceChildren(missionTable(recentFailed));
+});
+
+function missionTable(missions) {
+  if (!missions.length) return el('<p class="empty">Keine Einträge.</p>');
+  const table = el(`<table><thead><tr><th>Ziel</th><th>Status</th><th>Erstellt</th></tr></thead><tbody></tbody></table>`);
+  const body = table.querySelector('tbody');
+  for (const m of missions) {
+    const tr = el(`<tr class="clickable"><td>${esc(m.outcome.slice(0,80))}</td><td>${badge(m.status)}</td><td>${fmtTime(m.created_at)}</td></tr>`);
+    tr.onclick = () => { window.location.hash = `#/mission/${m.id}`; };
+    body.appendChild(tr);
+  }
+  return table;
+}
+
+function approvalTable(approvals) {
+  if (!approvals.length) return el('<p class="empty">Keine offenen Freigaben.</p>');
+  const table = el(`<table><thead><tr><th>Zusammenfassung</th><th>Risiko</th><th>Angefragt</th><th></th></tr></thead><tbody></tbody></table>`);
+  const body = table.querySelector('tbody');
+  for (const a of approvals) {
+    const tr = el(`<tr><td>${esc(a.summary)}</td><td>${badge(a.risk_class)}</td><td>${fmtTime(a.requested_at)}</td><td></td></tr>`);
+    tr.lastElementChild.appendChild(approvalActions(a));
+    body.appendChild(tr);
+  }
+  return table;
+}
+
+function approvalActions(a) {
+  const wrap = el('<span></span>');
+  const approveBtn = el('<button class="small approve">Approve</button>');
+  const denyBtn = el('<button class="small deny">Deny</button>');
+  approveBtn.onclick = () => resolveApproval(a.id, 'approve');
+  denyBtn.onclick = () => resolveApproval(a.id, 'deny');
+  wrap.append(approveBtn, denyBtn);
+  return wrap;
+}
+
+async function resolveApproval(id, action) {
+  const note = window.prompt(`Begründung für ${action === 'approve' ? 'Freigabe' : 'Ablehnung'} (optional):`, '') || '';
+  try {
+    await api(`/approvals/${id}/${action}`, { method: 'POST', body: JSON.stringify({ note }) });
+    render();
+  } catch (error) {
+    alert('Fehlgeschlagen: ' + error.message);
+  }
+}
+
+// ---------- Mission erstellen ----------
+route('new', async () => {
+  const projects = await api('/projects').catch(() => []);
+  app.innerHTML = `
+    <h2>Mission erstellen</h2>
+    <form class="panel" id="missionForm">
+      <label for="outcome">Was soll HufiAgents erledigen?</label>
+      <textarea id="outcome" required placeholder="Beschreibe das gewünschte Ergebnis …"></textarea>
+      <div class="row">
+        <div>
+          <label for="project">Projekt</label>
+          <select id="project">
+            <option value="">— kein Projekt (freie Aufgabe) —</option>
+            ${projects.map((p) => `<option value="${esc(p.id)}">${esc(p.id)}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label for="risk">Risikostufe</label>
+          <select id="risk">
+            <option value="R0">R0 · nur lesend</option>
+            <option value="R1" selected>R1 · lokal, reversibel</option>
+            <option value="R2">R2 · extern, geringe Wirkung</option>
+            <option value="R3">R3 · benötigt Freigabe</option>
+            <option value="R4">R4 · kritisch, benötigt Freigabe</option>
+          </select>
+        </div>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="dryRun" checked />
+        <label for="dryRun" style="margin:0;">Dry Run (keine echten Schreiboperationen)</label>
+      </div>
+      <button class="primary" type="submit">Mission starten</button>
+      <div id="formMsg"></div>
+    </form>
+  `;
+  document.getElementById('missionForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const outcome = document.getElementById('outcome').value.trim();
+    const projectId = document.getElementById('project').value;
+    const risk = document.getElementById('risk').value;
+    const dryRun = document.getElementById('dryRun').checked;
+    const msg = document.getElementById('formMsg');
+    msg.className = ''; msg.textContent = '';
+    const body = { outcome, risk_ceiling: risk };
+    if (projectId) {
+      body.steps = [{
+        objective: outcome, project_id: projectId, dry_run: dryRun,
+        allowed_tools: ['files', 'shell', 'git'],
+      }];
+    }
+    try {
+      const mission = await api('/missions', { method: 'POST', body: JSON.stringify(body) });
+      msg.className = 'ok'; msg.textContent = 'Mission gestartet.';
+      window.location.hash = `#/mission/${mission.id}`;
+    } catch (error) {
+      msg.className = 'err'; msg.textContent = 'Fehlgeschlagen: ' + error.message;
+    }
+  });
+});
+
+// ---------- Mission Detail ----------
+route('mission', async (id) => {
+  const [mission, tasks, audit] = await Promise.all([
+    api(`/missions/${id}`), api(`/tasks?mission_id=${id}`), api(`/audit?mission_id=${id}&limit=100`),
+  ]);
+  const taskBlocks = await Promise.all(tasks.map(async (t) => {
+    const [reviews, calls] = await Promise.all([
+      api(`/reviews?task_id=${t.id}`), api(`/tool-calls?task_id=${t.id}`),
+    ]);
+    return taskHtml(t, reviews, calls);
+  }));
+  app.innerHTML = `
+    <a class="back" href="#/dashboard">← Dashboard</a>
+    <h2>Mission</h2>
+    <dl class="kv">
+      <dt>Ziel</dt><dd>${esc(mission.outcome)}</dd>
+      <dt>Status</dt><dd>${badge(mission.status)}</dd>
+      <dt>Risikodecke</dt><dd>${esc(mission.risk_ceiling)}</dd>
+      <dt>Erstellt</dt><dd>${fmtTime(mission.created_at)}</dd>
+      <dt>Abgeschlossen</dt><dd>${fmtTime(mission.completed_at)}</dd>
+    </dl>
+    ${mission.result ? `<h3>Ergebnis</h3><pre class="result">${esc(mission.result)}</pre>` : ''}
+    <h3>Tasks (${tasks.length})</h3>
+    ${taskBlocks.join('') || '<p class="empty">Noch keine Tasks.</p>'}
+    <h3>Audit-Verlauf</h3>
+    ${timelineHtml(audit)}
+  `;
+});
+
+function taskHtml(t, reviews, calls) {
+  return `
+    <div class="card" style="margin-bottom:1rem;">
+      <dl class="kv" style="margin-bottom:.5rem;">
+        <dt>Ziel</dt><dd>${esc(t.objective)}</dd>
+        <dt>Status</dt><dd>${badge(t.status)}</dd>
+        <dt>Agent</dt><dd>${esc(t.assigned_agent_id ?? '—')}</dd>
+        <dt>Modell</dt><dd>${esc(t.selected_provider ?? '—')} ${t.routing_reason ? '· ' + esc(t.routing_reason) : ''}</dd>
+        <dt>Wiederholungen</dt><dd>${t.retry_count} / ${t.retry_limit}</dd>
+      </dl>
+      ${reviews.length ? `<div><strong>Reviews:</strong> ${reviews.map(r => badge(r.verdict)).join(' ')}</div>` : ''}
+      ${calls.length ? `<details><summary>Tool Calls (${calls.length})</summary><pre>${esc(JSON.stringify(calls, null, 2))}</pre></details>` : ''}
+    </div>
+  `;
+}
+
+// ---------- Agents ----------
+route('agents', async () => {
+  const agents = await api('/agents');
+  app.innerHTML = `<h2>Agents</h2><div id="t"></div>`;
+  const table = el(`<table><thead><tr><th>Agent</th><th>Rolle</th><th>Status</th><th>Risikodecke</th><th>Tools</th></tr></thead><tbody></tbody></table>`);
+  const body = table.querySelector('tbody');
+  for (const a of agents) {
+    body.appendChild(el(`<tr>
+      <td><strong>${esc(a.id)}</strong></td>
+      <td>${esc(a.role)}</td>
+      <td>${badge(a.status)}</td>
+      <td>${esc(a.default_risk_ceiling)}</td>
+      <td class="muted">${(a.capabilities.tools || []).join(', ') || '—'}</td>
+    </tr>`));
+  }
+  document.getElementById('t').replaceChildren(table);
+});
+
+// ---------- Projects ----------
+route('projects', async () => {
+  const projects = await api('/projects');
+  app.innerHTML = `<h2>Projects</h2><div id="t"></div>`;
+  if (!projects.length) { document.getElementById('t').innerHTML = '<p class="empty">Keine Projekte konfiguriert.</p>'; return; }
+  const table = el(`<table><thead><tr><th>Projekt</th><th>Repo</th><th>Branch</th><th>Erlaubt</th><th>Test/Build/Lint</th></tr></thead><tbody></tbody></table>`);
+  const body = table.querySelector('tbody');
+  for (const p of projects) {
+    body.appendChild(el(`<tr>
+      <td><strong>${esc(p.id)}</strong></td>
+      <td class="muted">${esc(p.repo_url)}</td>
+      <td>${esc(p.default_branch)}</td>
+      <td>${badge(p.allowed ? 'ok' : 'bad')}</td>
+      <td class="muted">${[p.has_test && 'test', p.has_build && 'build', p.has_lint && 'lint'].filter(Boolean).join(', ') || '—'}</td>
+    </tr>`));
+  }
+  document.getElementById('t').replaceChildren(table);
+});
+
+// ---------- Models ----------
+route('models', async () => {
+  const models = await api('/models');
+  const rows = models.providers.map((p) => `<tr>
+    <td><strong>${esc(p.provider)}</strong>${p.selected ? ' <span class="muted">(Standard)</span>' : ''}</td>
+    <td>${esc(p.model ?? '—')}</td>
+    <td>${badge(p.healthy ? 'healthy' : 'unhealthy')}</td>
+    <td class="muted">${esc(p.reason)}</td>
+  </tr>`).join('');
+  let routerHtml = '<p class="empty">Kein lokaler Router konfiguriert.</p>';
+  if (models.router && !models.router.error) {
+    const s = models.router.status;
+    routerHtml = `
+      <dl class="kv">
+        <dt>Basis-URL</dt><dd>${esc(models.router.base_url)}</dd>
+        <dt>Verfügbare Modelle</dt><dd>${models.router.models.map(esc).join(', ')}</dd>
+        <dt>Requests gesamt</dt><dd>${s.requests_total}</dd>
+        <dt>Primary</dt><dd>${s.by_backend.primary.ok} ok / ${s.by_backend.primary.fail} fail ${s.primary_down ? badge('bad') + ' down' : badge('ok') + ' up'}</dd>
+        <dt>Secondary</dt><dd>${s.by_backend.secondary.ok} ok / ${s.by_backend.secondary.fail} fail ${s.secondary_down ? badge('bad') + ' down' : badge('ok') + ' up'}</dd>
+        <dt>Failovers</dt><dd>${s.failovers}</dd>
+      </dl>`;
+  } else if (models.router && models.router.error) {
+    routerHtml = `<p class="empty">Router unter ${esc(models.router.base_url)} nicht erreichbar.</p>`;
+  }
+  app.innerHTML = `
+    <h2>Models</h2>
+    <table><thead><tr><th>Provider</th><th>Modell</th><th>Health</th><th>Auswahlgrund</th></tr></thead><tbody>${rows}</tbody></table>
+    <h3>Failover-Status (lokaler Router)</h3>
+    ${routerHtml}
+  `;
+});
+
+// ---------- Approvals ----------
+route('approvals', async () => {
+  const approvals = await api('/approvals?limit=100');
+  app.innerHTML = `<h2>Approvals</h2><div id="t"></div>`;
+  const table = el(`<table><thead><tr><th>Zusammenfassung</th><th>Risiko</th><th>Status</th><th>Angefragt</th><th>Entschieden</th><th></th></tr></thead><tbody></tbody></table>`);
+  const body = table.querySelector('tbody');
+  for (const a of approvals) {
+    const tr = el(`<tr>
+      <td>${esc(a.summary)}</td>
+      <td>${badge(a.risk_class)}</td>
+      <td>${badge(a.status)}</td>
+      <td>${fmtTime(a.requested_at)}</td>
+      <td class="muted">${a.resolved_at ? fmtTime(a.resolved_at) + ' · ' + esc(a.resolved_by ?? '') : '—'}</td>
+      <td></td>
+    </tr>`);
+    if (a.status === 'pending') tr.lastElementChild.appendChild(approvalActions(a));
+    body.appendChild(tr);
+  }
+  document.getElementById('t').replaceChildren(table);
+  if (!approvals.length) document.getElementById('t').innerHTML = '<p class="empty">Keine Freigaben.</p>';
+});
+
+// ---------- Audit ----------
+route('audit', async (missionId) => {
+  const missions = await api('/missions?limit=50');
+  const selected = missionId || (missions[0] && missions[0].id) || '';
+  app.innerHTML = `
+    <h2>Audit</h2>
+    <select class="mission-picker" id="missionPicker">
+      ${missions.map((m) => `<option value="${esc(m.id)}" ${m.id === selected ? 'selected' : ''}>${esc(m.outcome.slice(0,60))} · ${m.status}</option>`).join('')}
+    </select>
+    <div id="timeline"></div>
+  `;
+  if (!missions.length) { document.getElementById('timeline').innerHTML = '<p class="empty">Noch keine Missionen.</p>'; return; }
+  document.getElementById('missionPicker').addEventListener('change', (e) => {
+    window.location.hash = `#/audit/${e.target.value}`;
+  });
+  const audit = await api(`/audit?mission_id=${selected}&limit=100`);
+  document.getElementById('timeline').innerHTML = timelineHtml(audit);
+});
+
+// ---------- System ----------
+route('system', async () => {
+  const [health, models] = await Promise.all([api('/health'), api('/models')]);
+  app.innerHTML = `
+    <h2>System</h2>
+    <dl class="kv">
+      <dt>HufiAgents</dt><dd>${badge('ok')} ${esc(health.status)}</dd>
+      <dt>Standard-Provider</dt><dd>${esc(health.provider)}</dd>
+      <dt>Max. parallele Tasks</dt><dd>${health.max_concurrent_tasks}</dd>
+      <dt>Authentifizierung</dt><dd>${health.auth_enabled ? badge('ok') + ' aktiv' : badge('bad') + ' deaktiviert'}</dd>
+      <dt>AI Router</dt><dd>${models.router ? (models.router.error ? badge('bad') + ' nicht erreichbar' : badge('ok') + ' erreichbar') : '—'}</dd>
+    </dl>
+    <p class="muted">Weitere technische Details unter <a href="/docs" style="color:var(--accent-soft)">/docs</a> (API-Referenz).</p>
+  `;
+});
+
+// ---------- Bootstrap ----------
+document.getElementById('logoutBtn').onclick = async () => {
+  await fetch('/logout', { method: 'POST' }).catch(() => {});
+  window.location.href = '/login';
+};
+render();
+setInterval(() => {
+  const current = window.location.hash.replace(/^#\/?/, '') || 'dashboard';
+  if (['dashboard', 'approvals'].includes(current.split('/')[0])) render();
+}, 5000);
+</script>
+</body>
+</html>

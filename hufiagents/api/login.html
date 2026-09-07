@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>HufiAgents · Anmeldung</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    font: 16px/1.5 system-ui, sans-serif;
+    background: #0b1120;
+    color: #e5e7eb;
+    display: flex;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    margin: 0;
+  }
+  form {
+    background: #111827;
+    border: 1px solid #1f2937;
+    border-radius: 12px;
+    padding: 2.5rem;
+    width: min(360px, 90vw);
+  }
+  h1 { margin: 0 0 1.5rem; font-size: 1.5rem; }
+  label { display: block; font-size: .85rem; color: #93c5fd; margin: 1rem 0 .25rem; }
+  input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: .6rem .75rem;
+    border-radius: 8px;
+    border: 1px solid #374151;
+    background: #0b1120;
+    color: #e5e7eb;
+    font-size: 1rem;
+  }
+  button {
+    margin-top: 1.5rem;
+    width: 100%;
+    padding: .7rem;
+    border-radius: 8px;
+    border: none;
+    background: #2563eb;
+    color: white;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  button:hover { background: #1d4ed8; }
+  #error { color: #f87171; font-size: .85rem; min-height: 1.2rem; margin-top: .75rem; }
+</style>
+<body>
+  <form id="login">
+    <h1>HufiAgents</h1>
+    <label for="username">Benutzername</label>
+    <input id="username" name="username" autocomplete="username" required autofocus />
+    <label for="password">Passwort</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required />
+    <div id="error"></div>
+    <button type="submit">Anmelden</button>
+  </form>
+  <script>
+    document.getElementById('login').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+      const errorBox = document.getElementById('error');
+      errorBox.textContent = '';
+      try {
+        const response = await fetch('/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password }),
+        });
+        if (!response.ok) {
+          errorBox.textContent = 'Benutzername oder Passwort falsch.';
+          return;
+        }
+        window.location.href = '/';
+      } catch (error) {
+        errorBox.textContent = 'Verbindung fehlgeschlagen.';
+      }
+    });
+  </script>
+</body>
+</html>
