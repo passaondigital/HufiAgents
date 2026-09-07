@@ -6,6 +6,7 @@ destination -- these tests assert that guarantee directly, not just the
 happy path."""
 
 import subprocess
+from pathlib import Path
 
 import pytest
 
@@ -71,7 +72,7 @@ async def test_remote_add_ignores_caller_supplied_url(tmp_path):
 async def test_push_to_configured_remote_succeeds_and_is_verifiable(tmp_path):
     bare = make_bare_remote(tmp_path)
     workspace = Workspace(tmp_path / "workspace")
-    tool = GitTool(workspace, remote_url=str(bare))
+    tool = GitTool(workspace, remote_url=str(bare), push_token="test-token")
     await init_committed_repo(tool, workspace)
     await tool.execute(call("git", "remote_add"))
     result = await tool.execute(call("git", "push"))
@@ -158,6 +159,9 @@ async def test_github_tool_builds_bounded_argv_and_scoped_env(tmp_path, monkeypa
     assert "--head" in argv and "hufi/mission" in argv
     assert "--draft" in argv
     assert extra_env["GH_TOKEN"] == "secret-pat"
+    assert extra_env["GH_HOST"] == "github.com"
+    assert not Path(extra_env["GH_CONFIG_DIR"]).is_relative_to(workspace.root)
+    assert not Path(extra_env["GH_CONFIG_DIR"]).exists()
     # The token must never leak into the persisted params/audit trail.
     assert "secret-pat" not in str(argv)
 

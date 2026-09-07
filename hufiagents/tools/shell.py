@@ -1,5 +1,6 @@
 from hufiagents.contracts import Risk
 from hufiagents.tools.process import run_process
+from hufiagents.tools.sandbox import project_argv
 
 # Closed operations: no supplied executable, flags, command text or package scripts.
 COMMANDS = {"pwd": ["/bin/pwd"], "git_version": ["/usr/bin/git", "--version"]}
@@ -41,7 +42,13 @@ class ShellTool:
             argv = getattr(self.project, PROJECT_ACTIONS[call.action])
             if not argv:
                 raise PermissionError(f"{call.action} is not configured for this project")
-            return await run_process(argv, self.workspace, call, self.project_timeout)
+            return await run_process(
+                project_argv(argv, self.workspace.root),
+                self.workspace,
+                call,
+                self.project_timeout,
+                sandboxed=True,
+            )
         if risk != Risk.R0:
             raise PermissionError("arbitrary shell disabled until an OS sandbox is provided")
         return await run_process(

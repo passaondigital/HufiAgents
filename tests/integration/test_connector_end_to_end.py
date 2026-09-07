@@ -184,7 +184,7 @@ async def test_full_pipeline_dry_run_wires_every_tool_together_with_full_audit(t
 
 async def test_real_push_through_orchestrator_via_a_cloned_project(tmp_path):
     bare = make_fake_external_repo(tmp_path)
-    store, engine = setup(tmp_path, bare)
+    store, engine = setup(tmp_path, bare, github_token="test-token")
     mission = engine.submit(
         MissionCreate(
             outcome="ship it",

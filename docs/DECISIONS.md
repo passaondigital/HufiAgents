@@ -417,3 +417,180 @@ previously impossible (ADR-005 only covered a fresh empty workspace repo) —
 this ADR extends, not replaces, that isolation model: the clone still lands
 only inside the mission's own workspace directory, hard-scoped exactly as
 before.
+
+### ADR-011 — Git push credential path: a static, secret-free GIT_ASKPASS
+### helper, not a URL-embedded or config-persisted token
+
+**Status:** accepted (2026-09-07)
+
+**Context**
+
+Phase 3A's live probe (`docs/CONNECTOR-HUFMANAGER.md`/`docs/HANDOFFS.md`)
+found `GitTool.push` had no HTTPS credential path at all:
+`run_process`'s fixed baseline env (`hufiagents/tools/process.py`) sets
+`GIT_CONFIG_GLOBAL=/dev/null` and every git invocation passes
+`-c credential.helper=` (ADR-009's deliberate isolation from the host's own
+`gh auth` session), so `git push` had no way to authenticate — confirmed
+live: `fatal: could not read Username for 'https://github.com': terminal
+prompts disabled`. `GitHubTool` already has a working, safe pattern for its
+own credential (`GH_TOKEN` as isolated subprocess env for the `gh` CLI,
+ADR-009) — `git push` itself needs an equivalent, not a copy of that
+mechanism (`gh`/`GH_TOKEN` has nothing to do with plain `git`'s own HTTPS
+auth, which uses `GIT_ASKPASS`/`core.askPass`, not `gh`'s config).
+
+**Decision**
+
+A static, checked-in, **secret-free** shell script,
+`hufiagents/tools/git-askpass.sh`, set as `GIT_ASKPASS` only for the single
+`git push` subprocess invocation (`extra_env`, `run_process`). The script
+answers git's two-step HTTPS prompt itself:
+
+```sh
+case "$1" in
+    Username*) echo "x-access-token" ;;   # not a secret, GitHub's own convention
+    *)         echo "$HUFI_GIT_PUSH_TOKEN" ;;  # the only place the real value ever appears
+esac
+```
+
+`HUFI_GIT_PUSH_TOKEN` is set, only for that one subprocess, from
+`Settings.github_token` — the same, already-existing setting `GitHubTool`
+uses (ADR-009); no new secret/setting was introduced.
+`GitTool.__init__` gains `push_token`; `execute()`'s `push` branch fails
+closed (`PermissionError`) before spawning any subprocess if
+`push_token` is empty and the call is not `dry_run` — dry-run rehearses
+without needing a live credential, exactly like `GitHubTool.open_pr`
+already does. Empirically verified end-to-end (a local basic-auth-enforcing
+git-smart-HTTP test server, `tests/support/`) before this was written:
+`GIT_ASKPASS` is honored even with `GIT_TERMINAL_PROMPT=0` and
+`credential.helper=` cleared; a wrong token fails cleanly (`fatal:
+Authentication failed for '<url>'` — no credential in the message, because
+none was ever embedded in a URL to echo back); a correct token pushes for
+real.
+
+**Why, against each explicit requirement**
+
+- *Never in the remote URL / never in argv*: the script's own two literals
+  (`x-access-token`, and reading `$HUFI_GIT_PUSH_TOKEN`) are the entire
+  credential surface; `git push`'s argv stays exactly
+  `["push", "--set-upstream", "origin", branch]`, unchanged from before —
+  the URL used is whatever `clone` already configured (project registry
+  only), never rewritten with a username or token.
+- *Never logged/audited*: `extra_env` is a parameter to
+  `asyncio.create_subprocess_exec`, never touching `ToolCall.params` or any
+  Pydantic model that gets persisted — there is no code path by which it
+  could reach the DB, unlike `call.params`, which `redact()` scrubs as a
+  second line of defense that this design doesn't even need to rely on.
+- *Never persisted in git config*: `GIT_ASKPASS` is an env-var mechanism,
+  orthogonal to `git config`; nothing ever calls `git config` with the
+  token, and `credential.helper=` stays cleared exactly as before.
+- *No personal `gh` session*: unrelated code path entirely — plain `git`,
+  not `gh`; `run_process`'s existing `HOME` override already prevents
+  reading the real host's `~/.config/gh`.
+- *Only `HUFI_GITHUB_TOKEN`, server-side*: `push_token` is wired in
+  `engine.tools()` from `settings.github_token.get_secret_value()` only —
+  never from `call.params`, matching every other server-config-only value
+  in ADR-009/ADR-010 (remote URL, repo, commands).
+- *Scoped to the one push subprocess*: `extra_env` is passed only to the
+  specific `run_process(...)` call inside the `push` branch — `clone`,
+  `status`, `diff`, `log`, `add`, `commit`, `branch`, `remote_add` never
+  receive it.
+- *No leftover credential file/helper config*: the askpass script is
+  **static** (checked into the repo, contains no secret, nothing to
+  generate or delete per push) and the token exists only as one
+  subprocess's environment for its lifetime — there is structurally
+  nothing ephemeral to clean up, which is stronger than "cleans up after
+  itself."
+- *Remote still validated against the registry*: unchanged from ADR-010 —
+  `push` still re-verifies `git remote get-url origin` equals the target
+  project's `repo_url` (or the legacy `remote_url`) before ever reaching
+  the askpass-authenticated subprocess call.
+- *Only `integrator` can push, `builder` cannot*: unchanged from ADR-009 —
+  `push` is still R2, `builder`'s ceiling is still R1; this ADR changes
+  *how* an authorized push authenticates, not *who* is authorized to
+  request one.
+- *Fail closed when the token is missing*: `execute()` raises
+  `PermissionError` before any subprocess is spawned if `push_token` is
+  empty (checked ahead of the existing remote/branch checks), unless
+  `dry_run`.
+
+**Consequences**
+
+`hufiagents/tools/git-askpass.sh` must ship as package data (verified: it
+follows exactly the same inclusion path `hufiagents/api/status.html` already
+uses — hatchling bundles it into the wheel with its source file mode
+preserved, confirmed by inspecting the built wheel; `GitTool` additionally
+`chmod`s it defensively before use so a permission-stripping install/copy
+step can't silently break push). The same reused `HUFI_GITHUB_TOKEN` now
+gates two independent effects (`git push` and `gh pr create`) — both still
+fail closed independently if unset, and neither can be satisfied by the
+other (a token good enough for one is not implicitly trusted for the other
+without also being present on `Settings`, which is the same single
+server-side value by design, not two separately-obtained secrets).
+
+### ADR-012 — Phase 3A independent security review corrections
+
+**Status:** accepted for the review branch (2026-09-07); Phase 3A release blocked.
+
+ADR-009/010/011's fixed argv and directory isolation do not isolate project code:
+`npm test` executes task-editable code as the service user. Restore ADR-008's
+fail-closed posture until an OS sandbox exists. Project commands are limited to
+inert closed executables; HufManager npm tests/build/lint are temporarily disabled.
+
+Git accepts only conservative generated repository configuration. Push uses an
+explicit validated destination and full hufi source/destination refspec, disables
+redirects and requires TLS outside numeric loopback. Local file transports never
+receive the push credential. Validate helper installation instead of runtime chmod.
+Unknown askpass prompts return no credential. Credentialed process output is discarded,
+including GH_TOKEN processes; only exit status and static summaries are persisted.
+GitHub uses a private temporary configuration directory and fixed github.com host.
+
+This supersedes ADR-011's claims of unchanged push argv and sufficient generic
+redaction, and ADR-010's assumption that fixed npm argv isolates project execution.
+Hard parent death can still leave a credential child alive: fail-closed database
+recovery prevents duplicate effects but is not process-tree containment. Do not
+claim merge readiness until sandbox and crash containment are independently proven.
+See `docs/CODEX-REVIEW-PHASE3A.md` for evidence, compatibility changes and rollback.
+
+### ADR-013 — Bubblewrap project execution and credential process containment
+
+**Status:** accepted (2026-09-07)
+
+Project commands from a registry are still untrusted code even when their argv is
+server-configured. They run only through `/usr/bin/bwrap` with a new user, PID,
+IPC, UTS and network namespace; a private `/tmp` and `/proc`; a writable mission
+workspace; and a cleared, minimal environment. The sandbox mounts neither `/home`,
+`/srv`, `/run`, `/var`, host configuration nor the workspace parent. It exposes
+only an explicit Node/npm/Python/Pytest/Shell runtime allowlist and read-only shared
+libraries. Missing Bubblewrap, an unsupported command, or a Bubblewrap startup error
+fails closed. Project scripts can write their own workspace and nowhere else.
+
+Credentialed git/gh calls do not share the untrusted-code sandbox. They receive a
+separate Bubblewrap PID namespace with `--die-with-parent`, while the immediate Linux
+child sets `PR_SET_PDEATHSIG=SIGKILL` before exec and rechecks its parent PID. A hard
+death of HufiAgents therefore kills the containment supervisor and terminates every
+credential-bearing descendant in its PID namespace. Normal timeout sends TERM, waits
+two seconds, then KILLs the dedicated process group; cancellation records TERM and
+immediately KILLs/reaps it, because awaiting a grace period in a cancelled coroutine
+can itself be interrupted. Unknown external effects remain fail-closed in gateway
+recovery; a successful push followed by a crash is never repeated automatically.
+
+These controls require a Linux host on which unprivileged Bubblewrap user namespaces
+actually work. The feature is deliberately unavailable on other hosts rather than
+falling back to same-UID execution. See `CODEX-REVIEW-PHASE3A.md` for executable
+boundary and process-tree evidence.
+
+### ADR-014 — Hash-verified private Askpass runtime copy
+
+**Status:** accepted (2026-09-07)
+
+Git tracks an executable bit but cannot require the absence of group-write mode in
+a checkout. A trusted source tree created under umask 0002 can therefore materialize
+the checked-in, secret-free Askpass helper as 0775. Executing it would violate the
+credential boundary; rejecting it made otherwise safe fresh checkouts non-runnable.
+
+The application now verifies that the packaged helper is a regular single-linked file
+whose bytes match the checked-in SHA-256, then writes those bytes to a new owner-only
+0700 file in a private temporary directory. Only that copy is set as `GIT_ASKPASS`
+for the single credentialed subprocess and the directory is removed when it returns.
+A mismatched or linked source still fails closed. The helper contains no credential;
+the token remains only in the isolated subprocess environment.

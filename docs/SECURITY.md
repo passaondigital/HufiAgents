@@ -83,3 +83,17 @@ Mitigations include:
 ## Public repository warning
 
 `passaondigital/HufiAgents` is currently public. Real hostnames may be documented only if intentionally public; never include credentials, tokens, private keys, customer data or confidential infrastructure details.
+
+## Phase 3A review gate
+
+Project package scripts execute only under the Bubblewrap boundary in ADR-013. It
+clears secrets and host configuration, allows only the current mission workspace to
+be written, uses a private tmp/proc and disables networking. Bubblewrap unavailable
+or failing is a denial, never a same-UID fallback. Credentialed push/PR calls use a
+separate PID namespace plus parent-death signal; cancellation and timeout reap their
+process tree. Push/PR output remains suppressed rather than relying on regexes to
+recognize unknown/encoded secrets. Install the secret-free askpass helper with 0755
+permissions using a trusted, non-task-writable installation. At runtime its hash is
+verified and a private 0700 copy is used for one push, so an umask-derived group-write
+bit never becomes executable authority; mismatched or linked sources fail closed.
+See ADR-014 and `CODEX-REVIEW-PHASE3A.md`.

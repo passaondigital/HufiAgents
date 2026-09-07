@@ -330,6 +330,7 @@ class Orchestrator:
                 project=project,
                 dry_run=dry_run,
                 clone_timeout=self.settings.project_tool_timeout_seconds,
+                push_token=self.settings.github_token.get_secret_value(),
             ),
             "github": GitHubTool(
                 workspace,
