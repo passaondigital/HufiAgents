@@ -51,6 +51,7 @@ async def test_project_script_is_confined_to_workspace_with_no_network_or_creden
     network_probe = (
         "require('net').connect(9,'1.1.1.1')"
         ".on('connect',()=>process.exit(92)).on('error',()=>process.exit(0))"
+        ".setTimeout(1000,()=>process.exit(0))"
     )
     script.write_text(
         textwrap.dedent(

@@ -37,6 +37,10 @@ Auth tests. The source remains secret-free; its content is now hash-verified and
 to a private `0700` temporary helper only for the push, then deleted. Tampered or
 linked source fails closed. This fix is covered by an added regression and ADR-014.
 
+The network-denial probe now has a one-second socket timeout. A network namespace can
+drop a TCP SYN rather than immediately reject it on some CI runners; the timeout keeps
+the adversarial test deterministic while still failing if a connection succeeds.
+
 ## Validation
 
 - `ruff check` and `ruff format --check`: passed.
