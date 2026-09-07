@@ -93,5 +93,7 @@ or failing is a denial, never a same-UID fallback. Credentialed push/PR calls us
 separate PID namespace plus parent-death signal; cancellation and timeout reap their
 process tree. Push/PR output remains suppressed rather than relying on regexes to
 recognize unknown/encoded secrets. Install the secret-free askpass helper with 0755
-permissions using a trusted, non-task-writable installation; invalid permissions fail
-closed and are never repaired at runtime. See `CODEX-REVIEW-PHASE3A.md`.
+permissions using a trusted, non-task-writable installation. At runtime its hash is
+verified and a private 0700 copy is used for one push, so an umask-derived group-write
+bit never becomes executable authority; mismatched or linked sources fail closed.
+See ADR-014 and `CODEX-REVIEW-PHASE3A.md`.

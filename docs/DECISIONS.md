@@ -578,3 +578,19 @@ These controls require a Linux host on which unprivileged Bubblewrap user namesp
 actually work. The feature is deliberately unavailable on other hosts rather than
 falling back to same-UID execution. See `CODEX-REVIEW-PHASE3A.md` for executable
 boundary and process-tree evidence.
+
+### ADR-014 — Hash-verified private Askpass runtime copy
+
+**Status:** accepted (2026-09-07)
+
+Git tracks an executable bit but cannot require the absence of group-write mode in
+a checkout. A trusted source tree created under umask 0002 can therefore materialize
+the checked-in, secret-free Askpass helper as 0775. Executing it would violate the
+credential boundary; rejecting it made otherwise safe fresh checkouts non-runnable.
+
+The application now verifies that the packaged helper is a regular single-linked file
+whose bytes match the checked-in SHA-256, then writes those bytes to a new owner-only
+0700 file in a private temporary directory. Only that copy is set as `GIT_ASKPASS`
+for the single credentialed subprocess and the directory is removed when it returns.
+A mismatched or linked source still fails closed. The helper contains no credential;
+the token remains only in the isolated subprocess environment.

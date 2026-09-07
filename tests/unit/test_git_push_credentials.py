@@ -138,8 +138,8 @@ async def test_no_credential_file_or_helper_left_behind_after_push(tmp_path):
         remote = f"{base_url}/repo.git"
         workspace, tool = await committed_workspace(tmp_path, remote, push_token=TOKEN)
         await tool.execute(call("push"))
-    # The askpass helper is the one, static, checked-in, secret-free file --
-    # nothing ephemeral was ever written for this specific push.
+    # The packaged source is static and secret-free. Git executes a private
+    # hash-verified copy for this one push and removes it on return.
     assert ASKPASS_SCRIPT.exists()
     assert os.access(ASKPASS_SCRIPT, os.X_OK)
     assert TOKEN not in ASKPASS_SCRIPT.read_text()

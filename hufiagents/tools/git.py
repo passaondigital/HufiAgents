@@ -1,6 +1,8 @@
+import hashlib
 import os
 import re
 import stat
+import tempfile
 from pathlib import Path
 
 from hufiagents.contracts import Risk
@@ -9,6 +11,7 @@ from hufiagents.tools.process import run_process
 
 HUFI_BRANCH = re.compile(r"hufi/[a-zA-Z0-9_-]{1,80}")
 ASKPASS_SCRIPT = Path(__file__).with_name("git-askpass.sh")
+ASKPASS_SHA256 = "28dcb6bee3b1dabc432bb1fb12a2a3063a4b10fe3c4bb4dfcd6b7ea85d603426"
 
 
 class GitTool:
@@ -52,6 +55,7 @@ class GitTool:
     async def execute(self, call):
         action, params = call.action, call.params
         extra_env = None
+        askpass_dir = None
         if action not in {
             "init",
             "clone",
@@ -157,16 +161,9 @@ class GitTool:
             if not self.push_token:
                 raise PermissionError("no push credential configured; set HUFI_GITHUB_TOKEN")
             if protocol != "file":
-                info = ASKPASS_SCRIPT.lstat()
-                if (
-                    not stat.S_ISREG(info.st_mode)
-                    or info.st_mode & 0o022
-                    or not os.access(ASKPASS_SCRIPT, os.X_OK)
-                    or info.st_nlink != 1
-                ):
-                    raise PermissionError("unsafe askpass installation")
+                askpass_dir, askpass_path = self._private_askpass()
                 extra_env = {
-                    "GIT_ASKPASS": str(ASKPASS_SCRIPT),
+                    "GIT_ASKPASS": str(askpass_path),
                     "HUFI_GIT_PUSH_TOKEN": self.push_token,
                 }
             # An explicit destination and full refspec avoid remote pushurl,
@@ -187,7 +184,39 @@ class GitTool:
                 target_remote,
                 f"refs/heads/{branch}:refs/heads/{branch}",
             ]
+        if askpass_dir is not None:
+            with askpass_dir:
+                return await run_process(
+                    argv, self.workspace, call, self.timeout, extra_env=extra_env
+                )
         return await run_process(argv, self.workspace, call, self.timeout, extra_env=extra_env)
+
+    def _private_askpass(self):
+        """Copy a hash-verified, secret-free helper into an owner-only directory.
+
+        Git only stores executable mode, not group-write mode. A checkout made
+        under umask 0002 can therefore expose the package helper as 0775 even
+        though its Git mode is 0755. Never execute that source file directly:
+        verify its bytes, then execute a private 0700 copy for this one push.
+        """
+        info = ASKPASS_SCRIPT.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise PermissionError("unsafe askpass installation")
+        source = ASKPASS_SCRIPT.read_bytes()
+        if hashlib.sha256(source).hexdigest() != ASKPASS_SHA256:
+            raise PermissionError("unsafe askpass installation")
+        directory = tempfile.TemporaryDirectory(prefix="hufi-askpass-")
+        helper = Path(directory.name) / "git-askpass.sh"
+        fd = os.open(helper, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o700)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(source)
+                stream.flush()
+                os.fsync(stream.fileno())
+        except BaseException:
+            directory.cleanup()
+            raise
+        return directory, helper
 
     async def _require_unprotected_branch(self, call):
         branch = await self._current_branch(call)
