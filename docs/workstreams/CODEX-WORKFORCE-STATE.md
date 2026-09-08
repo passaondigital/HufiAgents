@@ -22,7 +22,9 @@
 
 ## Tests
 
-- Workforce/HufManager targeted test set: 8 passed; ruff clean.
+- Workforce/HufManager targeted test set: 10 passed.
+- Broader non-HTTP run: 215 passed; 15 legacy sandbox/network tests cannot bind
+  loopback or create Bubblewrap namespaces in this managed sandbox.
 - Existing TestClient integration tests currently hang during lifespan entry in this
   environment (also pre-existing `test_web_auth`); direct async lifespan is healthy.
 
