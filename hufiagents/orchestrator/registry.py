@@ -38,6 +38,7 @@ class AgentRegistry:
                     "providers": ["fake", "hufi-local-router", "ollama"],
                 },
                 default_risk_ceiling=Risk.R2,
+                risk_ceiling=Risk.R2,
             ),
             Agent(
                 id="hufi_chief",

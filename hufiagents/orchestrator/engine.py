@@ -8,6 +8,7 @@ from hufiagents.orchestrator.planner import Planner
 from hufiagents.orchestrator.registry import AgentRegistry
 from hufiagents.orchestrator.reviewer import Reviewer
 from hufiagents.orchestrator.state import TERMINAL
+from hufiagents.orchestrator.workforce import Workforce
 from hufiagents.projects import ProjectRegistry
 from hufiagents.providers.base import CompletionRequest
 from hufiagents.providers.fake import FakeProvider
@@ -29,6 +30,7 @@ class Orchestrator:
         self.store, self.settings = store, settings
         self.registry = AgentRegistry(store)
         self.registry.seed()
+        self.workforce = Workforce(store)
         self.projects = ProjectRegistry(settings.projects_path)
         self.providers = providers or {
             "fake": FakeProvider(),
