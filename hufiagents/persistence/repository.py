@@ -191,6 +191,16 @@ class Store:
                     "hufiagents.persistence.migrations.002_project_fields"
                 ).apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (2)")
+            if 3 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.003_dynamic_workforce"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (3)")
+            if 4 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.004_routines_connectors"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (4)")
 
     @contextmanager
     def transaction(self):
