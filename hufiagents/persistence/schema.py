@@ -6,12 +6,19 @@ from hufiagents.contracts import (
     Agent,
     ApprovalRequest,
     AuditEvent,
+    ChatRoom,
+    CredentialRef,
+    GraphProject,
+    GraphRelationship,
     Handoff,
     MemoryRecord,
     Mission,
+    Resource,
     ReviewResult,
     Task,
+    Team,
     ToolCall,
+    WorkEvidence,
 )
 
 metadata = MetaData()
@@ -27,6 +34,13 @@ MODELS = {
     "task_context": MemoryRecord,
     "project_knowledge": MemoryRecord,
     "agent_memory": MemoryRecord,
+    "work_evidence": WorkEvidence,
+    "teams": Team,
+    "graph_projects": GraphProject,
+    "resources": Resource,
+    "relationships": GraphRelationship,
+    "chat_rooms": ChatRoom,
+    "credential_refs": CredentialRef,
 }
 JSON_FIELDS = {
     "constraints",
@@ -40,6 +54,9 @@ JSON_FIELDS = {
     "findings",
     "detail",
     "value",
+    "content",
+    "metadata",
+    "scopes",
 }
 INTEGER_FIELDS = {"budget_tokens", "budget_seconds", "retry_limit", "retry_count", "exit_code"}
 FK = {

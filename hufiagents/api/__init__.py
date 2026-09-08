@@ -15,7 +15,10 @@ from hufiagents.config import Settings
 from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
+from hufiagents.contracts import WorkEvidence
 from hufiagents.projects import ProjectRegistry
+from hufiagents.api.org import router_for as org_router_for
+from hufiagents.api.org import router_for as org_router_for
 
 PUBLIC_PATHS = {"/health", "/login"}
 
@@ -59,6 +62,7 @@ def create_app(settings=None, providers=None):
                 lock.close()
 
     app = FastAPI(title="HufiAgents Core V1", lifespan=lifespan)
+    app.include_router(org_router_for(app))
     allowed_hosts = ["127.0.0.1", "localhost", "testserver"]
     if settings.public_hostname:
         allowed_hosts.append(settings.public_hostname)
@@ -305,6 +309,58 @@ def create_app(settings=None, providers=None):
         with app.state.store.transaction() as tx:
             return tx.audit.list(mission_id=mission_id, limit=limit, offset=offset)
 
+    @app.post("/work-evidence", status_code=201)
+    async def create_work_evidence(body: WorkEvidence):
+        """Persist sanitized, typed proof of work and its audit marker."""
+        with app.state.store.transaction() as tx:
+            if body.mission_id:
+                tx.missions.get(body.mission_id)
+            if body.task_id:
+                task = tx.tasks.get(body.task_id)
+                if body.mission_id and task.mission_id != body.mission_id:
+                    raise ValueError("task does not belong to mission")
+            evidence = tx.work_evidence.add(body)
+            tx.log(
+                "work_evidence_created",
+                mission_id=evidence.mission_id,
+                task_id=evidence.task_id,
+                evidence_id=evidence.id,
+                source_type=evidence.source_type,
+                evidence_type=evidence.evidence_type,
+            )
+            tx.log(
+                "work_evidence_redacted",
+                mission_id=evidence.mission_id,
+                task_id=evidence.task_id,
+                evidence_id=evidence.id,
+            )
+            return evidence
+
+    @app.get("/work-evidence")
+    async def work_evidence(
+        mission_id: str | None = None,
+        task_id: str | None = None,
+        source_type: str | None = None,
+        limit: int = Query(100, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+    ):
+        filters = {
+            key: value
+            for key, value in {
+                "mission_id": mission_id,
+                "task_id": task_id,
+                "source_type": source_type,
+            }.items()
+            if value is not None
+        }
+        with app.state.store.transaction() as tx:
+            return tx.work_evidence.list(limit=limit, offset=offset, **filters)
+
+    @app.get("/work-evidence/{identifier}")
+    async def work_evidence_item(identifier: str):
+        with app.state.store.transaction() as tx:
+            return tx.work_evidence.get(identifier)
+
     @app.get("/reviews")
     async def reviews(task_id: str):
         with app.state.store.transaction() as tx:
@@ -314,5 +370,7 @@ def create_app(settings=None, providers=None):
     async def tool_calls(task_id: str):
         with app.state.store.transaction() as tx:
             return tx.tool_calls.list(task_id=task_id)
+
+    app.include_router(org_router_for(app))
 
     return app

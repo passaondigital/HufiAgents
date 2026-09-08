@@ -156,9 +156,97 @@ class AuditEvent(Contract):
     detail: dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkEvidence(Contract):
+    """Sanitized, user-visible proof of work.
+
+    Evidence is deliberately separate from audit events: it may be shown in
+    product views, while the source payload is always passed through the
+    structured redaction boundary before persistence.
+    """
+
+    id: str = Field(default_factory=uid)
+    mission_id: str | None = None
+    task_id: str | None = None
+    source_type: str = Field(min_length=1, max_length=64)
+    evidence_type: str = Field(min_length=1, max_length=64)
+    summary: str = Field(default="", max_length=16000)
+    content: Any = None
+    artifact_ref: str | None = Field(default=None, max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=now)
+    redacted_at: datetime | None = None
+
+
 class MemoryRecord(Contract):
     id: str = Field(default_factory=uid)
     owner_id: str
     key: str
     value: dict[str, Any]
     created_at: datetime = Field(default_factory=now)
+
+
+class Team(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    status: Literal["active", "archived"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class GraphProject(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    repository_ref: str | None = None
+    status: Literal["active", "archived"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class Resource(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    resource_type: str = "other"
+    description: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    status: Literal["active", "archived"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class GraphRelationship(Contract):
+    id: str = Field(default_factory=uid)
+    relationship_type: Literal[
+        "reports_to", "member_of_team", "works_on_project",
+        "responsible_for_resource", "may_use_resource"
+    ]
+    source_type: str
+    source_id: str
+    target_type: str
+    target_id: str
+    primary: bool = False
+    created_at: datetime = Field(default_factory=now)
+    removed_at: datetime | None = None
+
+
+class ChatRoom(Contract):
+    id: str = Field(default_factory=uid)
+    room_type: Literal["agent", "team", "project", "company"]
+    host_type: str
+    host_id: str | None = None
+    name: str = Field(min_length=1, max_length=200)
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class CredentialRef(Contract):
+    """Metadata-only credential handle; plaintext values never enter this model."""
+    id: str = Field(default_factory=uid)
+    connector: str
+    label: str
+    scopes: list[str] = Field(default_factory=list)
+    status: Literal["active", "revoked"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    rotated_at: datetime | None = None
+    revoked_at: datetime | None = None

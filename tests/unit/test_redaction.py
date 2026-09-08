@@ -47,3 +47,28 @@ def test_passthrough_for_non_secret_scalars():
     assert redact(42) == 42
     assert redact(None) is None
     assert redact(True) is True
+
+
+def test_redacts_adversarial_pat_and_environment_secret():
+    fake_pat = "ghp_" + "a" * 36
+    output = redact(f"tool output: {fake_pat}\nPASSWORD=hunter2")
+    assert fake_pat not in output
+    assert "hunter2" not in output
+    assert "tool output" in output
+
+
+def test_redacts_credentialized_git_remote_and_http_headers():
+    value = (
+        "remote=https://alice:super-secret@example.test/repo.git\n"
+        "Authorization: Basic dXNlcjpzZWNyZXQ=\n"
+        "Cookie: sessionid=private-session"
+    )
+    output = redact(value)
+    for secret in ("super-secret", "dXNlcjpzZWNyZXQ=", "private-session"):
+        assert secret not in output
+    assert "Authorization: [REDACTED]" in output
+
+
+def test_harmless_text_is_not_over_redacted():
+    value = "The tokenizer contract is stable; this session discusses a token budget."
+    assert redact(value) == value
