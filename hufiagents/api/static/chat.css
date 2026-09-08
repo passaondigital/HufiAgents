@@ -190,6 +190,11 @@
 .approval-card__actions { flex-wrap: wrap; }
 .approval-card__status { margin-top: var(--space-2); font-size: .85rem; }
 
+/* ---------- Routine confirmation card (MUSS 1) ---------- */
+.routine-confirm { align-self: stretch; margin-top: var(--space-2); }
+.routine-confirm__actions { flex-wrap: wrap; }
+.routine-confirm__status { margin-top: var(--space-2); font-size: .85rem; color: var(--text-muted); }
+
 /* ---------- Result card ---------- */
 .result-card { align-self: stretch; }
 .result-card__head { margin-bottom: var(--space-2); }
