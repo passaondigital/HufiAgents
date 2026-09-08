@@ -151,6 +151,7 @@
     async load() {
       const agents = await Hufi.api('/agents').catch(() => []);
       let graph;
+      let unavailable = false;
       let mock = false;
       try {
         graph = await Hufi.api('/org');
@@ -162,10 +163,13 @@
           rooms: graph.chat_rooms || [],
         };
       } catch (e) {
-        mock = true;
-        graph = buildMockSnapshot(agents);
+        // Release-candidate default: never present fabricated company data.
+        // Development fixtures remain in this file for explicit test harnesses,
+        // but an unavailable backend is represented as an empty state.
+        unavailable = true;
+        graph = { teams: [], graphProjects: [], resources: [], relationships: [], rooms: [] };
       }
-      state = { agents, ...graph, mock };
+      state = { agents, ...graph, mock, unavailable };
       notify();
       return state;
     },
@@ -303,8 +307,8 @@
       try {
         items = await Hufi.api(`/work-evidence${params.toString() ? `?${params}` : ''}`);
       } catch (e) {
-        mock = true;
-        items = buildMockWorkEvidence(state?.agents || []);
+        // Do not fabricate evidence in normal RC operation.
+        items = [];
       }
       if (query.agent_id) {
         items = items.filter((ev) => ev.metadata && ev.metadata.agent_id === query.agent_id);

@@ -242,6 +242,21 @@
   function handleSend() {
     const text = inputEl.value.trim();
     if (!text) return;
+    const detector = Hufi.credentials && Hufi.credentials.interceptChatInput;
+    if (typeof detector === 'function' && detector(text).looksLikeSecret) {
+      let warning;
+      warning = Hufi.credentials.renderSecretWarning(
+        () => Hufi.credentials.openConnectModal?.({ connector: 'generic', label: 'Chat-Zugangsschlüssel' }),
+        () => { inputEl.value = ''; inputEl.style.height = 'auto'; warning.remove(); },
+        () => { warning.remove(); sendText(text); },
+      );
+      inputEl.parentElement.appendChild(warning);
+      return;
+    }
+    sendText(text);
+  }
+
+  function sendText(text) {
     const routine = detectRoutineIntent(text);
     if (routine && routine.type === 'clear') {
       inputEl.value = '';
