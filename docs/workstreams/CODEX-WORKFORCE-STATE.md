@@ -33,3 +33,6 @@
 - Add adversarial upgrade/permission tests, run non-TestClient suite and prepare PR.
 - Blocker: TestClient/installed Starlette-httpx lifecycle incompatibility needs separate
   environment remediation before the full HTTP suite can be claimed green.
+- PR: `https://github.com/passaondigital/HufiAgents/pull/12`.
+- Next exact step: rerun the full HTTP/sandbox suite in a host that permits
+  loopback sockets and unprivileged Bubblewrap namespaces, then review/merge PR 12.
