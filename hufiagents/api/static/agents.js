@@ -314,8 +314,41 @@
   function openRoutineModal(agentId, done) {
     const overlay = Hufi.el(`<div class="modal-overlay"><div class="modal-card card" role="dialog" aria-modal="true" aria-label="Routine erstellen"><h3>Routine erstellen</h3><label class="field-label">Was soll Hufi regelmäßig erledigen?</label><textarea id="routineTask" required></textarea><label class="field-label">Wann?</label><div class="routine-choice"><button type="button" data-kind="day">Täglich</button><button type="button" data-kind="week" class="is-selected">Wöchentlich</button></div><label class="field-label">Tag</label><select id="routineDay"><option value="monday">Montag</option><option value="tuesday">Dienstag</option><option value="wednesday">Mittwoch</option><option value="thursday">Donnerstag</option><option value="friday">Freitag</option><option value="saturday">Samstag</option><option value="sunday">Sonntag</option></select><label class="field-label">Zeit</label><input id="routineTime" type="time" value="08:00" required><p id="routineError" class="faint"></p><div class="row"><span class="spacer"></span><button type="button" id="routineCancel" class="btn btn--ghost">Abbrechen</button><button type="button" id="routineCreate" class="btn btn--primary">Routine erstellen</button></div></div></div>`);
     document.body.appendChild(overlay);
+    // P0 fix (v1.1.1 browser gate): this modal had no focus management at
+    // all -- unlike the "+ Neuer Hufi" modal, a keyboard user could Tab
+    // straight out of it into the page behind, and there was no Escape/
+    // scrim-click close. Same fix pattern as openNewHufiModal().
+    const card = overlay.querySelector('.modal-card');
+    const previouslyFocused = document.activeElement;
     let kind = 'week';
-    const close = () => overlay.remove();
+    const close = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKeydown);
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') previouslyFocused.focus();
+    };
+    function focusableElements() {
+      return Array.from(card.querySelectorAll('button, input, textarea, select, [href]'))
+        .filter((el) => !el.disabled && el.tabIndex !== -1);
+    }
+    function onKeydown(e) {
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key !== 'Tab') return;
+      const focusable = focusableElements();
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener('keydown', onKeydown);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
     overlay.querySelector('#routineCancel').onclick = close;
     overlay.querySelectorAll('[data-kind]').forEach((button) => button.onclick = () => { kind = button.dataset.kind; overlay.querySelectorAll('[data-kind]').forEach((b) => b.classList.toggle('is-selected', b === button)); overlay.querySelector('#routineDay').parentElement.style.display = kind === 'week' ? '' : 'none'; });
     overlay.querySelector('#routineCreate').onclick = async () => {
