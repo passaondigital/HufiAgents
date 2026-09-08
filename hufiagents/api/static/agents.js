@@ -3,9 +3,8 @@
    Owned by this feature module. Builds on the Hufi.* contract from app.js;
    never touches app.js/app.css/index.html/chat.js/chat.css.
 
-   Backend reality checks done before writing this file (do not re-guess):
-     - GET /agents        -> Agent[] {id, role, status, default_risk_ceiling,
-                              capabilities:{tools:[]}}. No POST /agents exists.
+   Backend contract: agents and routines are durable REST resources. The UI
+   refreshes its own state after a mutation; it never fakes success.
      - GET /audit          REQUIRES `mission_id` as a query param (verified
                             live: GET /audit?limit=5 -> 422 "mission_id ...
                             Field required"). There is NO way to fetch "all
@@ -15,9 +14,6 @@
                             fetching each mission's audit trail, then merging
                             + filtering client-side by actor. See
                             fetchAggregatedAudit() below.
-     - No routine-related backend code exists anywhere in hufiagents/
-       (grep -rln "routine" only matches an unrelated OS-process helper).
-       The Routines section here is a visual-only "coming soon" panel.
    ========================================================================== */
 (function () {
   const Hufi = (window.Hufi = window.Hufi || {});
@@ -249,13 +245,7 @@
 
         <section class="agent-section">
           <h3>Routinen</h3>
-          <div class="card routine-card">
-            <div class="row">
-              <span class="pill tone-idle">Bald verfügbar</span>
-            </div>
-            <p class="agent-routine-example muted">Beispiel: „Jeden Morgen um 8 Uhr einen Status-Report senden“</p>
-            <p class="faint">Wiederkehrende Routinen für diesen Hufi sind in dieser Version noch nicht verfügbar.</p>
-          </div>
+          <div id="agentRoutines" class="card routine-card"><p class="empty-hint">Lädt …</p></div>
         </section>
 
         <details class="agent-registry">
@@ -279,6 +269,30 @@
     container.querySelector('#openSystemView').addEventListener('click', () => openSystemView());
 
     loadAgentActivity(container, agent.id);
+    loadRoutines(container, agent.id);
+  }
+
+  async function loadRoutines(container, agentId) {
+    const target = container.querySelector('#agentRoutines');
+    try {
+      const routines = await Hufi.api(`/routines?owner_agent_id=${encodeURIComponent(agentId)}`);
+      target.innerHTML = routines.map((r) => `<div class="row"><span>${Hufi.esc(r.schedule)}</span><span class="pill ${r.enabled ? 'tone-ok' : 'tone-idle'}">${r.enabled ? 'Aktiv' : 'Pausiert'}</span><button class="btn btn--ghost btn--sm" data-routine="${Hufi.esc(r.id)}">${r.enabled ? 'Pausieren' : 'Fortsetzen'}</button></div><p class="faint">Nächster Lauf: ${Hufi.esc(r.next_run || 'wird geplant')}</p>`).join('') || '<p class="faint">Keine Routinen.</p>';
+      const add = Hufi.el('<button type="button" class="btn btn--ghost btn--sm">Routine anlegen</button>');
+      add.addEventListener('click', async () => {
+        const schedule = window.prompt('Wann? Zum Beispiel: every monday at 08:00');
+        if (!schedule) return;
+        try {
+          await Hufi.api('/routines', {method: 'POST', body: JSON.stringify({owner_agent_id: agentId, mission_template: {outcome: 'Erstelle einen sicheren Statusbericht.', risk_ceiling: 'R0'}, schedule, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'})});
+          loadRoutines(container, agentId);
+        } catch (e) { window.alert(`Routine konnte nicht angelegt werden: ${e.message}`); }
+      });
+      target.appendChild(add);
+      target.querySelectorAll('[data-routine]').forEach((button) => button.addEventListener('click', async () => {
+        const action = button.textContent === 'Pausieren' ? 'pause' : 'resume';
+        await Hufi.api(`/routines/${encodeURIComponent(button.dataset.routine)}/${action}`, {method: 'POST'});
+        loadRoutines(container, agentId);
+      }));
+    } catch (e) { target.innerHTML = `<p class="empty-hint">Routinen konnten nicht geladen werden: ${Hufi.esc(e.message)}</p>`; }
   }
 
   async function loadAgentActivity(container, agentId) {
@@ -369,19 +383,22 @@
     });
     card.querySelector('#newHufiClose').addEventListener('click', close);
 
-    card.querySelector('#newHufiForm').addEventListener('submit', (e) => {
+    card.querySelector('#newHufiForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      // Honest gap: there is no POST /agents in the backend yet. Do not
-      // fake success — tell the user plainly what's missing.
       const form = card.querySelector('#newHufiForm');
       const msg = card.querySelector('#newHufiMsg');
-      form.hidden = true;
-      msg.hidden = false;
-      msg.innerHTML = `
-        <p>Danke! Eigene Hufis können in dieser Version noch nicht dauerhaft angelegt werden – das kommt mit den dynamischen Agenten.</p>
-        <div class="row"><span class="spacer"></span><button type="button" class="btn btn--ghost btn--sm" id="newHufiOk">Verstanden</button></div>
-      `;
-      msg.querySelector('#newHufiOk').addEventListener('click', close);
+      const name = card.querySelector('#newHufiName').value.trim();
+      const description = card.querySelector('#newHufiPurpose').value.trim();
+      const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      try {
+        const created = await Hufi.api('/agents', {method: 'POST', body: JSON.stringify({id, name, role: name, description, capabilities: {tools: [], providers: []}, risk_ceiling: 'R0'})});
+        await loadSidebar();
+        selectAgent(created);
+        close();
+      } catch (err) {
+        msg.hidden = false;
+        msg.textContent = `Hufi konnte nicht angelegt werden: ${err.message}`;
+      }
     });
   }
 

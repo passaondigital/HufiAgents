@@ -14,11 +14,12 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from hufiagents import auth
 from hufiagents.config import Settings
 from hufiagents.orchestrator.engine import Orchestrator
-from hufiagents.contracts import Agent, AgentMessage, Channel
+from hufiagents.contracts import Agent, AgentMessage, Routine
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
 from hufiagents.workforce.team import HufManagerTeamMission
+from hufiagents.workforce.routines import RoutineService
 
 PUBLIC_PATHS = {"/health", "/login"}
 
@@ -81,6 +82,22 @@ class DelegationResult(BaseModel):
     agent_id: str
     result: str = Field(min_length=1, max_length=32000)
     failed: bool = False
+
+
+class RoutineCreate(BaseModel):
+    owner_agent_id: str
+    project_id: str | None = None
+    mission_template: dict
+    schedule: str = Field(min_length=1, max_length=1000)
+    timezone: str = Field(min_length=1, max_length=100)
+    retry_policy: dict = Field(default_factory=lambda: {"max_attempts": 2})
+
+
+class RoutineUpdate(BaseModel):
+    mission_template: dict | None = None
+    schedule: str | None = None
+    timezone: str | None = None
+    retry_policy: dict | None = None
 
 
 def create_app(settings=None, providers=None):
@@ -316,6 +333,34 @@ def create_app(settings=None, providers=None):
     @app.post("/delegations/{identifier}/result")
     async def receive_agent_result(identifier: str, body: DelegationResult):
         return app.state.engine.workforce.receive_agent_result(identifier, **body.model_dump())
+
+    def routines_service():
+        return RoutineService(app.state.store, app.state.engine.submit)
+
+    @app.get("/routines")
+    async def routines(owner_agent_id: str | None = None):
+        with app.state.store.transaction() as tx:
+            return tx.routines.list(**({"owner_agent_id": owner_agent_id} if owner_agent_id else {}))
+
+    @app.post("/routines", status_code=201)
+    async def create_routine(body: RoutineCreate):
+        return routines_service().create(Routine(**body.model_dump()))
+
+    @app.patch("/routines/{identifier}")
+    async def update_routine(identifier: str, body: RoutineUpdate):
+        return routines_service().update(identifier, **body.model_dump(exclude_none=True))
+
+    @app.post("/routines/{identifier}/pause")
+    async def pause_routine(identifier: str):
+        return routines_service().pause(identifier)
+
+    @app.post("/routines/{identifier}/resume")
+    async def resume_routine(identifier: str):
+        return routines_service().resume(identifier)
+
+    @app.post("/routines/{identifier}/archive")
+    async def archive_routine(identifier: str):
+        return routines_service().archive(identifier)
 
     @app.get("/projects")
     async def projects():

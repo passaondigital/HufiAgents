@@ -98,7 +98,7 @@
 .activity-label { font-size: .88rem; }
 .activity-time { font-size: .76rem; margin-top: 1px; }
 
-/* ---------- Routines (visual-only, coming soon) ---------- */
+/* ---------- Routines ---------- */
 .routine-card { display: flex; flex-direction: column; gap: var(--space-2); }
 .agent-routine-example {
   font-size: .86rem;
