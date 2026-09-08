@@ -427,10 +427,16 @@
         emptyEl.hidden = true;
         listEl.hidden = false;
       }
+      // QA fix: this used to show the raw backend id ("builder") instead of
+      // the display name already computed next to it in the sidebar
+      // ("Builder") -- a small but real jargon leak into the normal flow.
+      const displayName = (Hufi.agents && typeof Hufi.agents.humanizeId === 'function')
+        ? Hufi.agents.humanizeId(agentId)
+        : String(agentId);
       const note = Hufi.el(`<div class="system-note" data-fade-in></div>`);
-      note.textContent = `Chat mit ${agentId}`;
+      note.textContent = `Chat mit ${displayName}`;
       listEl.appendChild(note);
-      Hufi.mount.topbarTitle.textContent = String(agentId);
+      Hufi.mount.topbarTitle.textContent = displayName;
       scrollToBottom();
       if (inputEl) inputEl.focus();
     },
