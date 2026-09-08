@@ -483,7 +483,24 @@
       return;
     }
     const taskIds = new Set(tasks.map((t) => t.id));
-    const approval = approvals.find((a) => a.status === 'pending' && taskIds.has(a.task_id));
+    let approval = approvals.find((a) => a.status === 'pending' && taskIds.has(a.task_id));
+    if (!approval) {
+      // QA fix (MUSS 3): an ApprovalRequest is created against EITHER
+      // task_id OR tool_call_id (never both -- see docs/ARCHITECTURE.md
+      // Sec3.7), and a real R3 gate (e.g. a git push) is a *tool-call*-level
+      // approval, so it only ever carries tool_call_id. Matching on
+      // task_id alone silently never found these -- a real, reachable
+      // approval would still never have rendered a card. Cross-reference
+      // via the tracked tasks' own tool-calls as a second pass.
+      const pending = approvals.filter((a) => a.status === 'pending' && a.tool_call_id);
+      if (pending.length) {
+        const callLists = await Promise.all(
+          [...taskIds].map((id) => Hufi.api(`/tool-calls?task_id=${encodeURIComponent(id)}`).catch(() => []))
+        );
+        const ownToolCallIds = new Set(callLists.flat().map((c) => c.id));
+        approval = pending.find((a) => ownToolCallIds.has(a.tool_call_id));
+      }
+    }
     if (!approval) return;
     approvalSlot.dataset.rendered = '1';
     renderApprovalCard(approvalSlot, approval);
