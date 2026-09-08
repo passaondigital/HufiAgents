@@ -231,5 +231,63 @@
       if (rel) rel.removed_at = nowIso();
       notify();
     },
+
+    // ---------- Work evidence (visible work / transparency) ----------
+    // Same real/mock split as everything else here: /work-evidence exists
+    // as real code on Codex's unmerged branch, not yet on main. Used by
+    // both cards.js ("Arbeit ansehen" on an agent card) and work.js (the
+    // Arbeit/Verlauf view + work summary), so it lives here once rather
+    // than being reimplemented twice with potentially different mock data.
+    // `query` may include mission_id / task_id (real API filters); agent_id
+    // is a client-side filter applied after fetch/mock-generation since the
+    // real endpoint has no agent_id filter documented in the contract.
+    async loadWorkEvidence(query = {}) {
+      const params = new URLSearchParams();
+      if (query.mission_id) params.set('mission_id', query.mission_id);
+      if (query.task_id) params.set('task_id', query.task_id);
+      let items;
+      let mock = false;
+      try {
+        items = await Hufi.api(`/work-evidence${params.toString() ? `?${params}` : ''}`);
+      } catch (e) {
+        mock = true;
+        items = buildMockWorkEvidence(state?.agents || []);
+      }
+      if (query.agent_id) {
+        items = items.filter((ev) => ev.metadata && ev.metadata.agent_id === query.agent_id);
+      }
+      return { items, mock };
+    },
   };
+
+  const EVIDENCE_TYPES = [
+    { type: 'diff', summary: 'Änderung an der Codebasis vorbereitet.' },
+    { type: 'test', summary: 'Tests ausgeführt und geprüft.' },
+    { type: 'file', summary: 'Datei erstellt und abgelegt.' },
+    { type: 'report', summary: 'Bericht zusammengestellt.' },
+    { type: 'routine_result', summary: 'Routine ausgeführt.' },
+  ];
+
+  function buildMockWorkEvidence(agents) {
+    if (!agents.length) return [];
+    const items = [];
+    agents.forEach((agent, idx) => {
+      const pick = EVIDENCE_TYPES[idx % EVIDENCE_TYPES.length];
+      items.push({
+        id: mockId('mock-evidence'),
+        mission_id: mockId('mock-mission'),
+        task_id: mockId('mock-task'),
+        source_type: 'agent',
+        evidence_type: pick.type,
+        summary: pick.summary,
+        content: null,
+        artifact_ref: null,
+        metadata: { agent_id: agent.id },
+        created_at: nowIso(),
+        redacted_at: null,
+        _mock: true,
+      });
+    });
+    return items;
+  }
 })();
