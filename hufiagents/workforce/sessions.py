@@ -3,9 +3,14 @@
 import re
 from pathlib import Path
 
-from hufiagents.contracts import AgentWorkspace, BrowserSession, ComputerSession, WorkspaceSession, now
+from hufiagents.contracts import (
+    AgentWorkspace,
+    BrowserSession,
+    ComputerSession,
+    WorkspaceSession,
+    now,
+)
 from hufiagents.tools.workspace import Workspace
-
 
 _KEY = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9_-]{0,199}")
 
@@ -14,10 +19,14 @@ class SessionService:
     def __init__(self, store, workspace_root: Path):
         self.store, self.workspace_root = store, Path(workspace_root).resolve()
 
-    def create_workspace(self, agent_id: str, storage_key: str, *, quota_bytes=104857600) -> AgentWorkspace:
+    def create_workspace(
+        self, agent_id: str, storage_key: str, *, quota_bytes=104857600
+    ) -> AgentWorkspace:
         if not _KEY.fullmatch(storage_key):
             raise PermissionError("invalid workspace storage key")
-        workspace = AgentWorkspace(agent_id=agent_id, storage_key=storage_key, quota_bytes=quota_bytes)
+        workspace = AgentWorkspace(
+            agent_id=agent_id, storage_key=storage_key, quota_bytes=quota_bytes
+        )
         with self.store.transaction() as tx:
             tx.agents.get(agent_id)
             tx.agent_workspaces.add(workspace)
@@ -46,9 +55,13 @@ class SessionService:
         record = ComputerSession(agent_id=agent_id, workspace_id=workspace_id)
         return self._add("computer_sessions", record, "computer_session_prepared")
 
-    def prepare_browser(self, agent_id: str, workspace_id: str, *, memory_limit_mb=512) -> BrowserSession:
+    def prepare_browser(
+        self, agent_id: str, workspace_id: str, *, memory_limit_mb=512
+    ) -> BrowserSession:
         self._assert_owner(agent_id, workspace_id)
-        record = BrowserSession(agent_id=agent_id, workspace_id=workspace_id, memory_limit_mb=memory_limit_mb)
+        record = BrowserSession(
+            agent_id=agent_id, workspace_id=workspace_id, memory_limit_mb=memory_limit_mb
+        )
         return self._add("browser_sessions", record, "browser_session_prepared")
 
     def close(self, table: str, session_id: str) -> None:
@@ -58,7 +71,9 @@ class SessionService:
             record = getattr(tx, table).get(session_id)
             record.status, record.last_activity = "closed", now()
             getattr(tx, table).save(record)
-            tx.log("session_closed", actor=record.agent_id, session_id=record.id, session_type=table)
+            tx.log(
+                "session_closed", actor=record.agent_id, session_id=record.id, session_type=table
+            )
 
     def _assert_owner(self, agent_id, workspace_id):
         with self.store.transaction() as tx:
@@ -69,5 +84,7 @@ class SessionService:
     def _add(self, table, record, event):
         with self.store.transaction() as tx:
             getattr(tx, table).add(record)
-            tx.log(event, actor=record.agent_id, session_id=record.id, workspace_id=record.workspace_id)
+            tx.log(
+                event, actor=record.agent_id, session_id=record.id, workspace_id=record.workspace_id
+            )
         return record

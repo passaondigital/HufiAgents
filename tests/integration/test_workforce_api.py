@@ -42,10 +42,13 @@ def test_agent_lifecycle_and_delegation_api(tmp_path):
         delegation_id = created.json()["id"]
         messages = client.post("/agents/researcher/messages/receive")
         assert messages.status_code == 200 and messages.json()[0]["content"] == "inspect project"
-        assert client.post(
-            f"/delegations/{delegation_id}/result",
-            json={"agent_id": "researcher", "result": "facts"},
-        ).json()["status"] == "completed"
+        assert (
+            client.post(
+                f"/delegations/{delegation_id}/result",
+                json={"agent_id": "researcher", "result": "facts"},
+            ).json()["status"]
+            == "completed"
+        )
         archived = client.post("/agents/researcher/archive")
         assert archived.status_code == 200 and archived.json()["status"] == "archived"
         assert client.get("/agents/researcher").json()["archived_at"] is not None

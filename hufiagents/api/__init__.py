@@ -13,13 +13,13 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from hufiagents import auth
 from hufiagents.config import Settings
-from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.contracts import Agent, AgentMessage, Routine
+from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
-from hufiagents.workforce.team import HufManagerTeamMission
 from hufiagents.workforce.routines import RoutineService
+from hufiagents.workforce.team import HufManagerTeamMission
 
 PUBLIC_PATHS = {"/health", "/login"}
 
@@ -340,7 +340,9 @@ def create_app(settings=None, providers=None):
     @app.get("/routines")
     async def routines(owner_agent_id: str | None = None):
         with app.state.store.transaction() as tx:
-            return tx.routines.list(**({"owner_agent_id": owner_agent_id} if owner_agent_id else {}))
+            return tx.routines.list(
+                **({"owner_agent_id": owner_agent_id} if owner_agent_id else {})
+            )
 
     @app.post("/routines", status_code=201)
     async def create_routine(body: RoutineCreate):

@@ -1,16 +1,18 @@
 """WF-5 recurring missions. Product schedules are parsed narrowly, never cron."""
 
+import re
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
-import re
-from typing import Callable
 
 from hufiagents.contracts import Routine, now
 
-
-_WEEKDAYS = {name: index for index, name in enumerate(
-    ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-)}
+_WEEKDAYS = {
+    name: index
+    for index, name in enumerate(
+        ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    )
+}
 _SCHEDULE = re.compile(r"every (day|" + "|".join(_WEEKDAYS) + r") at ([0-2]\d):([0-5]\d)$")
 
 
@@ -106,7 +108,9 @@ class RoutineService:
                 with self.store.transaction() as tx:
                     fresh = tx.routines.get(routine.id)
                     maximum = min(20, max(0, int(fresh.retry_policy.get("max_attempts", 2))))
-                    delay = min(86400, max(1, int(fresh.retry_policy.get("retry_delay_seconds", 300))))
+                    delay = min(
+                        86400, max(1, int(fresh.retry_policy.get("retry_delay_seconds", 300)))
+                    )
                     fresh.retry_count += 1
                     if fresh.retry_count <= maximum:
                         fresh.next_run = current + timedelta(seconds=delay)
@@ -119,8 +123,12 @@ class RoutineService:
                         event = "routine_dispatch_exhausted"
                     fresh.updated_at = now()
                     tx.routines.save(fresh)
-                    tx.log(event, actor=fresh.owner_agent_id, routine_id=fresh.id,
-                           error=type(exc).__name__)
+                    tx.log(
+                        event,
+                        actor=fresh.owner_agent_id,
+                        routine_id=fresh.id,
+                        error=type(exc).__name__,
+                    )
                 continue
             with self.store.transaction() as tx:
                 fresh = tx.routines.get(routine.id)
@@ -132,7 +140,11 @@ class RoutineService:
                 # The Engine normally persists the mission, but keep this
                 # scheduler usable with an injected submitter too; audit
                 # detail must not introduce an FK dependency on its return.
-                tx.log("routine_dispatched", actor=fresh.owner_agent_id, routine_id=fresh.id,
-                       submitted_mission_id=getattr(mission, "id", None))
+                tx.log(
+                    "routine_dispatched",
+                    actor=fresh.owner_agent_id,
+                    routine_id=fresh.id,
+                    submitted_mission_id=getattr(mission, "id", None),
+                )
             dispatched.append(routine.id)
         return dispatched

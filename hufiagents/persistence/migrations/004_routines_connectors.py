@@ -9,10 +9,14 @@ from sqlalchemy import inspect
 
 from hufiagents.persistence.schema import TABLES
 
-
 NAMES = (
-    "routines", "agent_workspaces", "workspace_sessions", "computer_sessions",
-    "browser_sessions", "connectors", "agent_connector_access",
+    "routines",
+    "agent_workspaces",
+    "workspace_sessions",
+    "computer_sessions",
+    "browser_sessions",
+    "connectors",
+    "agent_connector_access",
 )
 
 
@@ -25,6 +29,10 @@ def apply(connection):
     # migration is upgraded safely as well.
     columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(routines)")}
     if "retry_count" not in columns:
-        connection.exec_driver_sql("ALTER TABLE routines ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0")
+        connection.exec_driver_sql(
+            "ALTER TABLE routines ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0"
+        )
     if "notification_state" not in columns:
-        connection.exec_driver_sql("ALTER TABLE routines ADD COLUMN notification_state VARCHAR NOT NULL DEFAULT 'none'")
+        connection.exec_driver_sql(
+            "ALTER TABLE routines ADD COLUMN notification_state VARCHAR NOT NULL DEFAULT 'none'"
+        )

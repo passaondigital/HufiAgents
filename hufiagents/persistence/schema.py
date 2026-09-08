@@ -5,8 +5,8 @@ from sqlalchemy import JSON, Boolean, Column, ForeignKey, Integer, MetaData, Str
 from hufiagents.contracts import (
     Agent,
     AgentConnectorAccess,
-    AgentWorkspace,
     AgentMessage,
+    AgentWorkspace,
     ApprovalRequest,
     AuditEvent,
     BrowserSession,
@@ -67,7 +67,16 @@ JSON_FIELDS = {
     "permissions",
     "risk_mapping",
 }
-INTEGER_FIELDS = {"budget_tokens", "budget_seconds", "retry_limit", "retry_count", "exit_code", "quota_bytes", "max_tabs", "memory_limit_mb"}
+INTEGER_FIELDS = {
+    "budget_tokens",
+    "budget_seconds",
+    "retry_limit",
+    "retry_count",
+    "exit_code",
+    "quota_bytes",
+    "max_tabs",
+    "memory_limit_mb",
+}
 FK = {
     "mission_id": "missions.id",
     "task_id": "tasks.id",

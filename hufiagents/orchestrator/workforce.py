@@ -2,7 +2,7 @@
 
 from collections.abc import Iterable
 
-from hufiagents.contracts import Agent, AgentMessage, Channel, Delegation, Risk, now, uid
+from hufiagents.contracts import Agent, AgentMessage, Channel, Delegation, now
 
 
 def _subset(child, parent):
@@ -54,9 +54,17 @@ class Workforce:
             return agent
 
     def update_agent(self, identifier: str, changes: dict, *, actor: str = "pascal"):
-        forbidden = {"id", "parent_agent_id", "capabilities", "risk_ceiling", "default_risk_ceiling"}
+        forbidden = {
+            "id",
+            "parent_agent_id",
+            "capabilities",
+            "risk_ceiling",
+            "default_risk_ceiling",
+        }
         if forbidden & changes.keys():
-            raise PermissionError("identity, lineage and permissions are immutable; create a new agent")
+            raise PermissionError(
+                "identity, lineage and permissions are immutable; create a new agent"
+            )
         with self.store.transaction() as tx:
             agent = tx.agents.get(identifier)
             if agent.status == "archived":
@@ -94,7 +102,12 @@ class Workforce:
             for agent_id in channel.member_agent_ids:
                 tx.agents.get(agent_id)
             tx.channels.add(channel)
-            tx.log("channel_created", actor=actor, channel_id=channel.id, members=channel.member_agent_ids)
+            tx.log(
+                "channel_created",
+                actor=actor,
+                channel_id=channel.id,
+                members=channel.member_agent_ids,
+            )
             return channel
 
     def send_message(self, message: AgentMessage):
@@ -135,7 +148,9 @@ class Workforce:
                 tx.log("agent_message_handled", actor=agent_id, message_id=message.id)
             return messages
 
-    def delegate_task(self, *, parent_agent_id, child_agent_id, objective, mission_id=None, task_id=None):
+    def delegate_task(
+        self, *, parent_agent_id, child_agent_id, objective, mission_id=None, task_id=None
+    ):
         with self.store.transaction() as tx:
             parent, child = tx.agents.get(parent_agent_id), tx.agents.get(child_agent_id)
             if parent.status != "active" or child.status != "active":
@@ -159,17 +174,20 @@ class Workforce:
                 child_agent_id=child.id,
                 correlation_id=delegation.correlation_id,
             )
-        return self.send_message(
-            AgentMessage(
-                from_agent_id=parent_agent_id,
-                to_agent_id=child_agent_id,
-                mission_id=mission_id,
-                task_id=task_id,
-                content=objective,
-                correlation_id=delegation.correlation_id,
-                delegation_id=delegation.id,
+        return (
+            self.send_message(
+                AgentMessage(
+                    from_agent_id=parent_agent_id,
+                    to_agent_id=child_agent_id,
+                    mission_id=mission_id,
+                    task_id=task_id,
+                    content=objective,
+                    correlation_id=delegation.correlation_id,
+                    delegation_id=delegation.id,
+                )
             )
-        ) and delegation
+            and delegation
+        )
 
     def receive_agent_result(self, delegation_id: str, *, agent_id: str, result: str, failed=False):
         with self.store.transaction() as tx:
@@ -202,7 +220,14 @@ class Workforce:
         )
         return delegation
 
-    def fan_out(self, *, parent_agent_id: str, child_agent_ids: Iterable[str], objective: str, mission_id=None):
+    def fan_out(
+        self,
+        *,
+        parent_agent_id: str,
+        child_agent_ids: Iterable[str],
+        objective: str,
+        mission_id=None,
+    ):
         return [
             self.delegate_task(
                 parent_agent_id=parent_agent_id,
@@ -225,7 +250,8 @@ class Workforce:
             if any(item.status not in {"completed", "failed", "cancelled"} for item in delegations):
                 raise ValueError("fan-in waits for terminal child delegations")
             report = "\n\n".join(
-                f"[{item.child_agent_id} / {item.status}]\n{item.result or ''}" for item in delegations
+                f"[{item.child_agent_id} / {item.status}]\n{item.result or ''}"
+                for item in delegations
             )
             tx.log(
                 "fan_in_completed",
@@ -233,4 +259,8 @@ class Workforce:
                 delegation_ids=ids,
                 completed=sum(item.status == "completed" for item in delegations),
             )
-            return {"parent_agent_id": next(iter(parents)), "report": report, "delegations": delegations}
+            return {
+                "parent_agent_id": next(iter(parents)),
+                "report": report,
+                "delegations": delegations,
+            }

@@ -101,8 +101,7 @@ class HufManagerTeamMission:
             "fact_source": "server-side project registry",
         }
         objective = (
-            f"Assess {specialty} for HufManager sales readiness. "
-            "State evidence and blockers."
+            f"Assess {specialty} for HufManager sales readiness. State evidence and blockers."
         )
         result = await provider.complete(
             CompletionRequest(

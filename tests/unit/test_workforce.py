@@ -30,7 +30,9 @@ def test_spawn_delegation_message_and_fan_in_are_durable():
     received = workforce.receive_messages("security")
     assert received[0].delegation_id == delegations[0].id
 
-    workforce.receive_agent_result(delegations[0].id, agent_id="security", result="No critical issue")
+    workforce.receive_agent_result(
+        delegations[0].id, agent_id="security", result="No critical issue"
+    )
     workforce.receive_agent_result(delegations[1].id, agent_id="product", result="UX needs polish")
     summary = workforce.fan_in([item.id for item in delegations])
     assert summary["parent_agent_id"] == "lead"
@@ -59,7 +61,9 @@ def test_spawn_cannot_expand_delegator_permissions_or_ceiling():
     else:
         raise AssertionError("capability escalation was accepted")
     try:
-        workforce.create_agent(agent("risk", risk_ceiling="R2", parent_agent_id="lead"), delegator_id="lead")
+        workforce.create_agent(
+            agent("risk", risk_ceiling="R2", parent_agent_id="lead"), delegator_id="lead"
+        )
     except PermissionError as exc:
         assert "risk ceiling" in str(exc)
     else:
