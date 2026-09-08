@@ -33,6 +33,7 @@ HufiAgents should then be able to:
 - Qwen/Ollama for cheap/private routine work; stronger remote models when needed.
 - Least privilege and isolated workspaces.
 - Persistent state and auditable tool execution.
+- **Visible Work / Arbeitsnachweis:** Hufi must be able to show understandable evidence of real work without exposing technical complexity; progress, snapshots and success are never faked.
 - No secrets, passwords or customer data in Git.
 - Existing production systems must not be disrupted by the build.
 - HufManager remains a business priority and must not be blocked by HufiAgents development.
@@ -110,6 +111,7 @@ Both work autonomously in separate branches/worktrees and coordinate through rep
 - `AGENTS.md` — global operating rules.
 - `CLAUDE.md` — Claude Code role and workflow.
 - `docs/HUFIAGENTS-PRODUCT-VISION.md` — product vision, current V1.0.1 state, UX mandate and long-term target.
+- `docs/product/VISIBLE-WORK.md` — binding Visible Work / Arbeitsnachweis principle: real, sanitized evidence instead of black-box AI.
 - `docs/ARCHITECTURE.md` — target system design.
 - `docs/ROADMAP.md` — phased delivery plan.
 - `docs/SECURITY.md` — autonomy and approval boundaries.
