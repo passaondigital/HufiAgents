@@ -80,6 +80,7 @@ Canonical specs:
 
 - `docs/product/ORG-CANVAS.md`
 - `docs/product/ORG-CANVAS-WORK-EVIDENCE.md`
+- `docs/V1.2-PRODUCT-VISION-ADDENDUM.md`
 
 ## Visible Work
 
@@ -180,15 +181,18 @@ Before V1.2 can ship, prove at minimum:
 
 ## Read first
 
+- `docs/V1.2-DOCUMENTATION-INDEX.md` — current-vs-historical document map and truth-source order.
 - `AGENTS.md` — global operating rules.
 - `CLAUDE.md` — Claude Code role/workflow history and rules.
 - `docs/HUFIAGENTS-TARGET-PLAN.md` — binding 1:99 roadmap and long-term target.
 - `docs/HUFIAGENTS-CAPABILITY-MAP.md` — reusable capability ownership.
-- `docs/HUFIAGENTS-PRODUCT-VISION.md` — product vision and UX target.
+- `docs/HUFIAGENTS-PRODUCT-VISION.md` — long-form product vision/history.
+- `docs/V1.2-PRODUCT-VISION-ADDENDUM.md` — binding V1.2 Digital Company/Visible Work/Credential additions.
 - `docs/product/VISIBLE-WORK.md` — binding Work Evidence / trust principle.
 - `docs/product/ORG-CANVAS.md` — Digital Company / flexible graph target.
 - `docs/product/ORG-CANVAS-WORK-EVIDENCE.md` — real activity/evidence in the canvas.
-- `docs/ARCHITECTURE.md` — system design and historical core contracts.
+- `docs/V1.2-ARCHITECTURE-ADDENDUM.md` — additive V1.2 architecture above the proven V1/V1.1 core.
+- `docs/ARCHITECTURE.md` — historical/proven core system design and contracts.
 - `docs/ROADMAP.md` — current delivery sequence.
 - `docs/SECURITY.md` — autonomy, credential and evidence security boundaries.
 - `docs/OPERATING_MODEL.md` — Codex/Claude collaboration protocol.
