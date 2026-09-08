@@ -138,10 +138,9 @@ class KnowledgeService:
         with self.store.transaction() as tx:
             mission = tx.missions.get(mission_id)
             tasks = tx.tasks.list(mission_id=mission_id, limit=10000)
+            review_sets = [tx.reviews.list(task_id=t.id, limit=10000) for t in tasks]
             approved = bool(tasks) and all(
-                tx.reviews.list(task_id=t.id, limit=10000)[-1].verdict == "approve"
-                for t in tasks
-                if tx.reviews.list(task_id=t.id, limit=10000)
+                reviews and reviews[-1].verdict == "approve" for reviews in review_sets
             )
             if mission.status.value != "completed" or not approved:
                 rec = LearningRecord(
