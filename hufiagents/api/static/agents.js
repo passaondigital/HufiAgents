@@ -25,6 +25,11 @@
   // ---------- Friendly copy helpers ----------
 
   function humanizeId(id) {
+    const labels = {
+      hufi_chief: 'Hufi', builder: 'Entwicklung', integrator: 'Integration',
+      project_lead: 'Projektleitung', reviewer: 'Qualitätsprüfung', security: 'Sicherheit',
+    };
+    if (labels[id]) return labels[id];
     return String(id || '')
       .replace(/[_-]+/g, ' ')
       .trim()
@@ -107,7 +112,8 @@
   }
 
   function avatarColor(id) {
-    return `hsl(${hashHue(id)}, 58%, 42%)`;
+    const palette = ['#f47f1f', '#c14f15', '#f59f0a', '#c96a48', '#d65d42', '#8f3e2b', '#5d514b'];
+    return palette[hashHue(id) % palette.length];
   }
 
   function initials(name) {
@@ -233,7 +239,7 @@
             <span class="agent-computer-icon" aria-hidden="true">🖥️</span>
             <div>
               <div class="agent-computer-title">Computer</div>
-              <div class="faint">Noch nicht verbunden</div>
+              <div class="faint">Computer-Steuerung ist noch nicht verfügbar.</div>
             </div>
           </div>
         </div>
@@ -249,7 +255,7 @@
         </section>
 
         <details class="agent-registry">
-          <summary>Weitere Informationen</summary>
+          <summary>Technische Details</summary>
           <dl class="kv-list">
             <dt>Rollenbeschreibung</dt><dd>${Hufi.esc(agent.role)}</dd>
             <dt>Risikodecke</dt><dd>${Hufi.esc(agent.default_risk_ceiling || '—')}</dd>
@@ -295,14 +301,7 @@
       const routines = await Hufi.api(`/routines?owner_agent_id=${encodeURIComponent(agentId)}`);
       target.innerHTML = routines.map((r) => `<div class="row"><span>${Hufi.esc(scheduleLabelDe(r.schedule))}</span><span class="pill ${r.enabled ? 'tone-ok' : 'tone-idle'}">${r.enabled ? 'Aktiv' : 'Pausiert'}</span><button class="btn btn--ghost btn--sm" data-routine="${Hufi.esc(r.id)}">${r.enabled ? 'Pausieren' : 'Fortsetzen'}</button></div><p class="faint">Nächster Lauf: ${Hufi.esc(r.next_run ? Hufi.fmtTime(r.next_run) : 'wird geplant')}</p>`).join('') || '<p class="faint">Keine Routinen.</p>';
       const add = Hufi.el('<button type="button" class="btn btn--ghost btn--sm">Routine anlegen</button>');
-      add.addEventListener('click', async () => {
-        const schedule = window.prompt('Wann? Zum Beispiel: every monday at 08:00');
-        if (!schedule) return;
-        try {
-          await Hufi.api('/routines', {method: 'POST', body: JSON.stringify({owner_agent_id: agentId, mission_template: {outcome: 'Erstelle einen sicheren Statusbericht.', risk_ceiling: 'R0'}, schedule, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'})});
-          loadRoutines(container, agentId);
-        } catch (e) { window.alert(`Routine konnte nicht angelegt werden: ${e.message}`); }
-      });
+      add.addEventListener('click', () => openRoutineModal(agentId, () => loadRoutines(container, agentId)));
       target.appendChild(add);
       target.querySelectorAll('[data-routine]').forEach((button) => button.addEventListener('click', async () => {
         const action = button.textContent === 'Pausieren' ? 'pause' : 'resume';
@@ -310,6 +309,55 @@
         loadRoutines(container, agentId);
       }));
     } catch (e) { target.innerHTML = `<p class="empty-hint">Routinen konnten nicht geladen werden: ${Hufi.esc(e.message)}</p>`; }
+  }
+
+  function openRoutineModal(agentId, done) {
+    const overlay = Hufi.el(`<div class="modal-overlay"><div class="modal-card card" role="dialog" aria-modal="true" aria-label="Routine erstellen"><h3>Routine erstellen</h3><label class="field-label">Was soll Hufi regelmäßig erledigen?</label><textarea id="routineTask" required></textarea><label class="field-label">Wann?</label><div class="routine-choice"><button type="button" data-kind="day">Täglich</button><button type="button" data-kind="week" class="is-selected">Wöchentlich</button></div><label class="field-label">Tag</label><select id="routineDay"><option value="monday">Montag</option><option value="tuesday">Dienstag</option><option value="wednesday">Mittwoch</option><option value="thursday">Donnerstag</option><option value="friday">Freitag</option><option value="saturday">Samstag</option><option value="sunday">Sonntag</option></select><label class="field-label">Zeit</label><input id="routineTime" type="time" value="08:00" required><p id="routineError" class="faint"></p><div class="row"><span class="spacer"></span><button type="button" id="routineCancel" class="btn btn--ghost">Abbrechen</button><button type="button" id="routineCreate" class="btn btn--primary">Routine erstellen</button></div></div></div>`);
+    document.body.appendChild(overlay);
+    // P0 fix (v1.1.1 browser gate): this modal had no focus management at
+    // all -- unlike the "+ Neuer Hufi" modal, a keyboard user could Tab
+    // straight out of it into the page behind, and there was no Escape/
+    // scrim-click close. Same fix pattern as openNewHufiModal().
+    const card = overlay.querySelector('.modal-card');
+    const previouslyFocused = document.activeElement;
+    let kind = 'week';
+    const close = () => {
+      overlay.remove();
+      document.removeEventListener('keydown', onKeydown);
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') previouslyFocused.focus();
+    };
+    function focusableElements() {
+      return Array.from(card.querySelectorAll('button, input, textarea, select, [href]'))
+        .filter((el) => !el.disabled && el.tabIndex !== -1);
+    }
+    function onKeydown(e) {
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key !== 'Tab') return;
+      const focusable = focusableElements();
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+    document.addEventListener('keydown', onKeydown);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) close();
+    });
+    overlay.querySelector('#routineCancel').onclick = close;
+    overlay.querySelectorAll('[data-kind]').forEach((button) => button.onclick = () => { kind = button.dataset.kind; overlay.querySelectorAll('[data-kind]').forEach((b) => b.classList.toggle('is-selected', b === button)); overlay.querySelector('#routineDay').parentElement.style.display = kind === 'week' ? '' : 'none'; });
+    overlay.querySelector('#routineCreate').onclick = async () => {
+      const outcome = overlay.querySelector('#routineTask').value.trim(); const time = overlay.querySelector('#routineTime').value;
+      if (!outcome || !time) { overlay.querySelector('#routineError').textContent = 'Bitte Aufgabe und Zeit auswählen.'; return; }
+      const schedule = kind === 'day' ? `every day at ${time}` : `every ${overlay.querySelector('#routineDay').value} at ${time}`;
+      try { await Hufi.api('/routines', {method: 'POST', body: JSON.stringify({owner_agent_id: agentId, mission_template: {outcome, risk_ceiling: 'R0'}, schedule, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'})}); close(); done(); } catch (error) { overlay.querySelector('#routineError').textContent = `Routine konnte nicht erstellt werden: ${error.message}`; }
+    };
+    overlay.querySelector('#routineTask').focus();
   }
 
   async function loadAgentActivity(container, agentId) {
@@ -343,7 +391,7 @@
 
   // ---------- "+ Neuer Hufi" flow ----------
 
-  const SWATCHES = [0, 30, 200, 260, 140, 340].map((h) => `hsl(${h}, 58%, 42%)`);
+  const SWATCHES = ['#f47f1f', '#c14f15', '#f59f0a', '#c96a48', '#d65d42', '#8f3e2b'];
 
   function openNewHufiModal() {
     const overlay = Hufi.el(`<div class="modal-overlay" data-fade-in></div>`);

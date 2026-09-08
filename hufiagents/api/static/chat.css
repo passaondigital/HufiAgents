@@ -30,7 +30,7 @@
   padding: var(--space-6) var(--space-3);
 }
 .chat-empty__avatar {
-  background: linear-gradient(155deg, var(--accent), #7fa1ff);
+  background: linear-gradient(155deg, var(--accent), var(--accent-hover));
   color: #0b0e14;
   margin-bottom: var(--space-2);
 }
