@@ -63,6 +63,7 @@
 
   const rightpane = document.getElementById('rightpane');
   const rightpaneScrim = document.getElementById('rightpaneScrim');
+  const shell = document.getElementById('shell');
 
   Hufi.rightPane = {
     show(title, renderFn) {
@@ -70,10 +71,12 @@
       Hufi.mount.rightpaneContent.innerHTML = '';
       renderFn(Hufi.mount.rightpaneContent);
       rightpane.classList.add('rightpane--open');
+      shell.classList.add('shell--rightpane');
       rightpaneScrim.classList.add('scrim--visible');
     },
     hide() {
       rightpane.classList.remove('rightpane--open');
+      shell.classList.remove('shell--rightpane');
       rightpaneScrim.classList.remove('scrim--visible');
     },
   };
@@ -98,7 +101,7 @@
 
   document.getElementById('rightpaneToggle').onclick = () => {
     rightpane.classList.contains('rightpane--open') ? Hufi.rightPane.hide() : (
-      rightpane.classList.add('rightpane--open'), rightpaneScrim.classList.add('scrim--visible')
+      rightpane.classList.add('rightpane--open'), shell.classList.add('shell--rightpane'), rightpaneScrim.classList.add('scrim--visible')
     );
   };
   document.getElementById('rightpaneClose').onclick = () => Hufi.rightPane.hide();
