@@ -69,6 +69,10 @@
 
 /* ---------- Message list / turns ---------- */
 .chat-msglist { display: flex; flex-direction: column; gap: var(--space-5); }
+/* [hidden] is a low-specificity UA rule; the class rules above outrank it,
+   so a toggled `hidden` attribute alone would not actually hide these two.
+   Re-assert display:none for the hidden state with matching specificity. */
+.chat-empty[hidden], .chat-msglist[hidden] { display: none; }
 .turn { display: flex; flex-direction: column; gap: var(--space-2); }
 
 .bubble {

@@ -112,7 +112,13 @@ a { color: var(--accent-soft); }
   position: relative;
 }
 @media (min-width: 700px) {
-  .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 100%; }
+  /* grid-template-rows is required: an implicit `auto` row sizes to its
+     tallest item's *content* height (e.g. a long JSON dump in the right
+     pane), and `align-items: stretch` then stretches every column -
+     including #chat - to that same inflated height, pushing the whole
+     page into a giant scroll. minmax(0, 1fr) caps the row at the grid's
+     own height so each column's internal overflow:auto can do its job. */
+  .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
 }
 @media (min-width: 1100px) {
   .shell { grid-template-columns: 280px minmax(0, 1fr) 340px; }
@@ -134,7 +140,7 @@ a { color: var(--accent-soft); }
 }
 .sidebar.sidebar--open { transform: translateX(0); }
 @media (min-width: 700px) {
-  .sidebar { position: static; transform: none; width: auto; max-width: none; height: 100%; }
+  .sidebar { position: static; transform: none; width: auto; max-width: none; height: 100%; min-height: 0; }
 }
 
 .sidebar-header {
@@ -167,6 +173,7 @@ a { color: var(--accent-soft); }
 /* ---------- Chat column ---------- */
 .chat {
   min-width: 0;
+  min-height: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -189,7 +196,7 @@ a { color: var(--accent-soft); }
 }
 .rightpane.rightpane--open { transform: translateX(0); }
 @media (min-width: 1100px) {
-  .rightpane { position: static; transform: none !important; width: auto; max-width: none; height: 100%; }
+  .rightpane { position: static; transform: none !important; width: auto; max-width: none; height: 100%; min-height: 0; }
 }
 .rightpane-header {
   display: flex;
@@ -282,6 +289,10 @@ a { color: var(--accent-soft); }
 /* ---------- Utility ---------- */
 .stack { display: flex; flex-direction: column; gap: var(--space-3); }
 .row { display: flex; align-items: center; gap: var(--space-3); }
+/* [hidden] is a low-specificity UA rule; the two class rules above outrank
+   it, so toggling the `hidden` attribute alone would not hide a .row/.stack
+   element. Re-assert display:none for the hidden state at matching specificity. */
+.row[hidden], .stack[hidden] { display: none; }
 .spacer { flex: 1; }
 .muted { color: var(--text-muted); }
 .faint { color: var(--text-faint); }
