@@ -1,0 +1,229 @@
+/* ==========================================================================
+   Hufi — Agent Experience module styles (sidebar contact rows + agent
+   detail / System views). Builds on tokens defined in app.css; does not
+   redefine shell layout.
+   ========================================================================== */
+
+/* ---------- Sidebar rows ---------- */
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3);
+  margin: 2px 0;
+  border: none;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--fast) var(--ease);
+}
+.agent-row:hover {
+  background: var(--surface-2);
+}
+/* QA fix: hover and focus were visually identical (both just a background
+   shift with outline:none) so keyboard focus was indistinguishable from a
+   mouse hover on the app's primary nav element. Give focus its own ring. */
+.agent-row:focus-visible {
+  background: var(--surface-2);
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.agent-row:active { transform: scale(.99); }
+
+.agent-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agent-row-name {
+  font-weight: 600;
+  font-size: .92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.agent-row-role {
+  font-size: .78rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---------- Agent detail (right pane) ---------- */
+.agent-profile-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+.agent-profile-heading { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.agent-profile-name { margin: 0; font-size: 1.15rem; line-height: 1.2; }
+.agent-profile-role { margin: 0; font-size: .88rem; }
+
+.agent-computer {
+  margin-bottom: var(--space-5);
+}
+.agent-computer-icon { font-size: 1.5rem; line-height: 1; }
+.agent-computer-title { font-weight: 600; }
+
+.agent-section { margin-bottom: var(--space-5); }
+.agent-section h3 {
+  font-size: .82rem;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  color: var(--text-muted);
+  margin: 0 0 var(--space-3);
+  font-weight: 600;
+}
+
+/* ---------- Live activity ---------- */
+.activity-list { display: flex; flex-direction: column; gap: var(--space-3); }
+.activity-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+.activity-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex-shrink: 0;
+  background: var(--idle);
+}
+.activity-dot.tone-ok { background: var(--ok); }
+.activity-dot.tone-warn { background: var(--warn); }
+.activity-dot.tone-bad { background: var(--bad); }
+.activity-dot.tone-idle { background: var(--idle); }
+.activity-body { min-width: 0; }
+.activity-label { font-size: .88rem; }
+.activity-time { font-size: .76rem; margin-top: 1px; }
+
+/* ---------- Routines ---------- */
+.routine-card { display: flex; flex-direction: column; gap: var(--space-2); }
+.agent-routine-example {
+  font-size: .86rem;
+  font-style: italic;
+}
+
+/* ---------- Registry details toggle ---------- */
+.agent-registry {
+  margin-bottom: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+  padding-top: var(--space-3);
+}
+.agent-registry summary {
+  cursor: pointer;
+  color: var(--accent-soft);
+  font-size: .85rem;
+  font-weight: 500;
+}
+.agent-registry summary::marker { color: var(--text-faint); }
+.kv-list {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-3) 0;
+  font-size: .86rem;
+}
+.kv-list dt { color: var(--text-muted); }
+.kv-list dd { margin: 0; word-break: break-word; }
+
+.tag-list-label { font-size: .78rem; margin-bottom: var(--space-2); }
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  max-width: 100%;
+}
+.tag {
+  display: inline-flex;
+  padding: .15rem .6rem;
+  border-radius: var(--radius-full);
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  font-size: .76rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.agent-detail-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-soft);
+}
+
+/* ---------- "+ Neuer Hufi" modal ---------- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 10, .6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 60;
+}
+.modal-card {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.modal-card .field-label {
+  font-size: .8rem;
+  color: var(--text-muted);
+  margin-top: var(--space-2);
+}
+.modal-card input[type="text"],
+.modal-card textarea {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+}
+.modal-card textarea { min-height: 90px; resize: vertical; }
+
+.swatch-row { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+.color-swatch {
+  /* QA fix: 28px + space-2 (8px) gap was below the ~40px touch-target
+     minimum on mobile; 36px + space-3 (12px) gap comfortably clears it. */
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.color-swatch.is-selected { border-color: var(--text); }
+
+.new-hufi-msg { font-size: .88rem; padding-top: var(--space-2); }
+.new-hufi-msg p { margin: 0 0 var(--space-3); color: var(--text-muted); }
+
+/* ---------- System / Details (expert) view ---------- */
+.system-view-note { font-size: .8rem; margin: 0 0 var(--space-3); }
+.json-dump {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  font-size: .78rem;
+  line-height: 1.5;
+  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre;
+}
+
+/* ---------- Responsive ---------- */
+@media (max-width: 389px) {
+  .agent-profile-header { gap: var(--space-3); }
+  .kv-list { grid-template-columns: 1fr; }
+}

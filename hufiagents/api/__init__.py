@@ -7,15 +7,19 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from hufiagents import auth
 from hufiagents.config import Settings
+from hufiagents.contracts import Agent, AgentMessage, Routine
 from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
+from hufiagents.workforce.routines import RoutineService
+from hufiagents.workforce.team import HufManagerTeamMission
 
 PUBLIC_PATHS = {"/health", "/login"}
 
@@ -27,6 +31,73 @@ class Resolution(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=1, max_length=200)
+
+
+class AgentCreate(BaseModel):
+    id: str = Field(min_length=1, max_length=200)
+    name: str = Field("", max_length=200)
+    role: str = Field(min_length=1, max_length=1000)
+    description: str = Field("", max_length=8000)
+    capabilities: dict = Field(default_factory=dict)
+    parent_agent_id: str | None = None
+    project_id: str | None = None
+    risk_ceiling: str = "R1"
+    model_preference: str | None = Field(None, max_length=200)
+    memory_scope: str = Field("agent", max_length=200)
+    workspace_id: str | None = Field(None, max_length=200)
+    delegator_id: str | None = Field(None, max_length=200)
+
+
+class AgentUpdate(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    role: str | None = Field(None, min_length=1, max_length=1000)
+    description: str | None = Field(None, max_length=8000)
+    project_id: str | None = Field(None, max_length=200)
+    model_preference: str | None = Field(None, max_length=200)
+    memory_scope: str | None = Field(None, max_length=200)
+    workspace_id: str | None = Field(None, max_length=200)
+    status: str | None = None
+
+
+class MessageCreate(BaseModel):
+    from_agent_id: str
+    to_agent_id: str | None = None
+    channel_id: str | None = None
+    mission_id: str | None = None
+    task_id: str | None = None
+    content: str = Field(min_length=1, max_length=32000)
+    correlation_id: str | None = None
+    delegation_id: str | None = None
+
+
+class DelegationCreate(BaseModel):
+    parent_agent_id: str
+    child_agent_id: str
+    objective: str = Field(min_length=1, max_length=16000)
+    mission_id: str | None = None
+    task_id: str | None = None
+
+
+class DelegationResult(BaseModel):
+    agent_id: str
+    result: str = Field(min_length=1, max_length=32000)
+    failed: bool = False
+
+
+class RoutineCreate(BaseModel):
+    owner_agent_id: str
+    project_id: str | None = None
+    mission_template: dict
+    schedule: str = Field(min_length=1, max_length=1000)
+    timezone: str = Field(min_length=1, max_length=100)
+    retry_policy: dict = Field(default_factory=lambda: {"max_attempts": 2})
+
+
+class RoutineUpdate(BaseModel):
+    mission_template: dict | None = None
+    schedule: str | None = None
+    timezone: str | None = None
+    retry_policy: dict | None = None
 
 
 def create_app(settings=None, providers=None):
@@ -63,6 +134,11 @@ def create_app(settings=None, providers=None):
     if settings.public_hostname:
         allowed_hosts.append(settings.public_hostname)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+    app.mount(
+        "/static",
+        StaticFiles(directory=Path(__file__).with_name("static")),
+        name="static",
+    )
 
     @app.middleware("http")
     async def request_boundary(request: Request, call_next):
@@ -119,6 +195,10 @@ def create_app(settings=None, providers=None):
     async def capacity(request, exc):
         return JSONResponse({"detail": "queue at capacity"}, status_code=429)
 
+    @app.exception_handler(PermissionError)
+    async def forbidden(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=403)
+
     @app.get("/health")
     async def health():
         return {
@@ -164,11 +244,22 @@ def create_app(settings=None, providers=None):
 
     @app.get("/", response_class=HTMLResponse)
     async def status():
+        return Path(__file__).with_name("static").joinpath("index.html").read_text()
+
+    @app.get("/legacy", response_class=HTMLResponse)
+    async def legacy_status():
+        # V1.0.1 admin-dashboard UI, kept reachable for expert/system fallback
+        # during the V1.1 product-experience rollout (docs/HUFIAGENTS-PRODUCT-VISION.md).
         return Path(__file__).with_name("status.html").read_text()
 
     @app.post("/missions", status_code=202)
     async def create_mission(body: MissionCreate):
         return app.state.engine.submit(body)
+
+    @app.post("/missions/hufmanager/team", status_code=202)
+    async def hufmanager_team_mission():
+        """Start the bounded, read-only HufManager sales-readiness benchmark."""
+        return await HufManagerTeamMission(app.state.engine).run()
 
     @app.get("/missions")
     async def missions(limit: int = Query(100, ge=1, le=100), offset: int = Query(0, ge=0)):
@@ -198,9 +289,80 @@ def create_app(settings=None, providers=None):
         return {"status": "cancelled"}
 
     @app.get("/agents")
-    async def agents():
+    async def agents(status: str | None = None):
+        return app.state.engine.workforce.list_agents(**({"status": status} if status else {}))
+
+    @app.post("/agents", status_code=201)
+    async def create_agent(body: AgentCreate, request: Request):
+        data = body.model_dump(exclude={"delegator_id"})
+        return app.state.engine.workforce.create_agent(
+            Agent(**data, created_by=getattr(request.state, "username", "pascal")),
+            delegator_id=body.delegator_id,
+        )
+
+    @app.get("/agents/{identifier}")
+    async def agent(identifier: str):
+        return app.state.engine.workforce.get_agent(identifier)
+
+    @app.patch("/agents/{identifier}")
+    async def update_agent(identifier: str, body: AgentUpdate, request: Request):
+        return app.state.engine.workforce.update_agent(
+            identifier,
+            body.model_dump(exclude_none=True),
+            actor=getattr(request.state, "username", "pascal"),
+        )
+
+    @app.post("/agents/{identifier}/archive")
+    async def archive_agent(identifier: str, request: Request):
+        return app.state.engine.workforce.archive_agent(
+            identifier, actor=getattr(request.state, "username", "pascal")
+        )
+
+    @app.post("/agent-messages", status_code=201)
+    async def send_agent_message(body: MessageCreate):
+        return app.state.engine.workforce.send_message(AgentMessage(**body.model_dump()))
+
+    @app.post("/agents/{identifier}/messages/receive")
+    async def receive_agent_messages(identifier: str):
+        return app.state.engine.workforce.receive_messages(identifier)
+
+    @app.post("/delegations", status_code=201)
+    async def delegate_task(body: DelegationCreate):
+        return app.state.engine.workforce.delegate_task(**body.model_dump())
+
+    @app.post("/delegations/{identifier}/result")
+    async def receive_agent_result(identifier: str, body: DelegationResult):
+        return app.state.engine.workforce.receive_agent_result(identifier, **body.model_dump())
+
+    def routines_service():
+        return RoutineService(app.state.store, app.state.engine.submit)
+
+    @app.get("/routines")
+    async def routines(owner_agent_id: str | None = None):
         with app.state.store.transaction() as tx:
-            return tx.agents.list()
+            return tx.routines.list(
+                **({"owner_agent_id": owner_agent_id} if owner_agent_id else {})
+            )
+
+    @app.post("/routines", status_code=201)
+    async def create_routine(body: RoutineCreate):
+        return routines_service().create(Routine(**body.model_dump()))
+
+    @app.patch("/routines/{identifier}")
+    async def update_routine(identifier: str, body: RoutineUpdate):
+        return routines_service().update(identifier, **body.model_dump(exclude_none=True))
+
+    @app.post("/routines/{identifier}/pause")
+    async def pause_routine(identifier: str):
+        return routines_service().pause(identifier)
+
+    @app.post("/routines/{identifier}/resume")
+    async def resume_routine(identifier: str):
+        return routines_service().resume(identifier)
+
+    @app.post("/routines/{identifier}/archive")
+    async def archive_routine(identifier: str):
+        return routines_service().archive(identifier)
 
     @app.get("/projects")
     async def projects():

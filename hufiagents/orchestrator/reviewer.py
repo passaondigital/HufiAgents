@@ -1,5 +1,32 @@
 from hufiagents.contracts import ReviewResult
 
+# Bounded, high-confidence phrases a model uses when it refuses or reports an
+# incident instead of delivering a usable result. Deliberately narrow (real
+# refusal language, not everyday words like "kann") to avoid flagging
+# legitimate results that merely mention limits or risks in passing. Product
+# QA (docs/product/PRODUCT-FLOW-FINDINGS.md, MUSS 2) found a model refusal
+# rendered identically to a real success ("Fertig") because "nonempty" text
+# is not the same as an accepted deliverable -- this criterion is the
+# mechanical, backend-owned fix, not a frontend string check.
+_REFUSAL_MARKERS = (
+    "kritischer sicherheitsvorfall",
+    "wird nicht ausgeführt",
+    "lehne diese anfrage ab",
+    "kann ich nicht ausführen",
+    "kann ich nicht tun",
+    "verstößt gegen meine richtlinien",
+    "i cannot comply",
+    "i will not execute",
+    "i refuse to",
+    "i cannot assist with this request",
+    "as an ai, i cannot",
+)
+
+
+def _looks_like_refusal(text: str) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in _REFUSAL_MARKERS)
+
 
 class Reviewer:
     def review(self, task, workspace, artifact, calls):
@@ -29,6 +56,8 @@ class Reviewer:
                     ok = bool(results) and all(
                         c.exit_code == criterion.get("value", 0) for c in results
                     )
+                elif kind == "not_refusal":
+                    ok = not _looks_like_refusal(task.result or "")
                 else:
                     ok = False
             except (OSError, ValueError):
@@ -36,7 +65,7 @@ class Reviewer:
             if not ok:
                 findings.append(
                     {
-                        "severity": "P2",
+                        "severity": "P1" if kind == "not_refusal" else "P2",
                         "summary": f"criterion failed: {kind}",
                         "evidence": criterion,
                     }

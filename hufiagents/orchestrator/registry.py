@@ -38,11 +38,15 @@ class AgentRegistry:
                     "providers": ["fake", "hufi-local-router", "ollama"],
                 },
                 default_risk_ceiling=Risk.R2,
+                risk_ceiling=Risk.R2,
             ),
             Agent(
                 id="hufi_chief",
                 role="Mission intake, prioritisation, coordination",
-                capabilities={"tools": [], "providers": []},
+                # Coordination may delegate bounded local-model analysis, but
+                # never gains a tool capability through that delegation.
+                capabilities={"tools": [], "providers": ["fake", "hufi-local-router", "ollama"]},
+                risk_ceiling=Risk.R0,
             ),
             Agent(
                 id="project_lead",
@@ -58,9 +62,21 @@ class AgentRegistry:
         ]
         with self.store.transaction() as tx:
             for entry in entries:
-                if not tx.agents.list(id=entry.id):
+                existing = tx.agents.list(id=entry.id)
+                if not existing:
                     tx.agents.add(entry)
                     tx.log("agent_registered", actor=entry.id)
+                elif entry.id == "hufi_chief":
+                    # Existing V1 installations already have this static
+                    # coordinator. Updating its declarative local-provider
+                    # list is required before it can safely delegate the
+                    # read-only team benchmark; it grants no tool access.
+                    chief = existing[0]
+                    chief.capabilities["providers"] = entry.capabilities["providers"]
+                    chief.risk_ceiling = Risk.R0
+                    chief.default_risk_ceiling = Risk.R0
+                    tx.agents.save(chief)
+                    tx.log("agent_registered_updated", actor=entry.id, agent_id=entry.id)
 
     def get(self, identifier):
         with self.store.transaction() as tx:
