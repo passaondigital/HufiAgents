@@ -9,4 +9,4 @@ Backend regression suite: 292 passed. Ruff, format, compileall and touched JavaS
 
 Migration and restart validation passed against a copy of the production-shaped SQLite database; legacy counts were preserved. Production DB/service were not touched.
 
-Open P2: direct project↔resource attribution, richer `/work-summary` frontend consumption, and large-graph density. Environment-blocked optional proofs: real Qwen runtime, learning/memory/skill reuse, and runtime no-LLM call-count telemetry. CI for the latest PR update is still running; do not merge or deploy until it succeeds.
+Open P2: direct project↔resource attribution, richer `/work-summary` frontend consumption, and large-graph density. Environment-blocked optional proofs: real Qwen runtime, learning/memory/skill reuse, and runtime no-LLM call-count telemetry. Latest PR CI passed; merge and deployment remain separate explicitly authorized steps.
