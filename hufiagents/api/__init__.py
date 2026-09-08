@@ -13,6 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from hufiagents import auth
 from hufiagents.config import Settings
 from hufiagents.orchestrator.engine import Orchestrator
+from hufiagents.contracts import Agent, AgentMessage, Channel
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
@@ -27,6 +28,57 @@ class Resolution(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=1, max_length=200)
+
+
+class AgentCreate(BaseModel):
+    id: str = Field(min_length=1, max_length=200)
+    name: str = Field("", max_length=200)
+    role: str = Field(min_length=1, max_length=1000)
+    description: str = Field("", max_length=8000)
+    capabilities: dict = Field(default_factory=dict)
+    parent_agent_id: str | None = None
+    project_id: str | None = None
+    risk_ceiling: str = "R1"
+    model_preference: str | None = Field(None, max_length=200)
+    memory_scope: str = Field("agent", max_length=200)
+    workspace_id: str | None = Field(None, max_length=200)
+    delegator_id: str | None = Field(None, max_length=200)
+
+
+class AgentUpdate(BaseModel):
+    name: str | None = Field(None, max_length=200)
+    role: str | None = Field(None, min_length=1, max_length=1000)
+    description: str | None = Field(None, max_length=8000)
+    project_id: str | None = Field(None, max_length=200)
+    model_preference: str | None = Field(None, max_length=200)
+    memory_scope: str | None = Field(None, max_length=200)
+    workspace_id: str | None = Field(None, max_length=200)
+    status: str | None = None
+
+
+class MessageCreate(BaseModel):
+    from_agent_id: str
+    to_agent_id: str | None = None
+    channel_id: str | None = None
+    mission_id: str | None = None
+    task_id: str | None = None
+    content: str = Field(min_length=1, max_length=32000)
+    correlation_id: str | None = None
+    delegation_id: str | None = None
+
+
+class DelegationCreate(BaseModel):
+    parent_agent_id: str
+    child_agent_id: str
+    objective: str = Field(min_length=1, max_length=16000)
+    mission_id: str | None = None
+    task_id: str | None = None
+
+
+class DelegationResult(BaseModel):
+    agent_id: str
+    result: str = Field(min_length=1, max_length=32000)
+    failed: bool = False
 
 
 def create_app(settings=None, providers=None):
@@ -119,6 +171,10 @@ def create_app(settings=None, providers=None):
     async def capacity(request, exc):
         return JSONResponse({"detail": "queue at capacity"}, status_code=429)
 
+    @app.exception_handler(PermissionError)
+    async def forbidden(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=403)
+
     @app.get("/health")
     async def health():
         return {
@@ -198,9 +254,50 @@ def create_app(settings=None, providers=None):
         return {"status": "cancelled"}
 
     @app.get("/agents")
-    async def agents():
-        with app.state.store.transaction() as tx:
-            return tx.agents.list()
+    async def agents(status: str | None = None):
+        return app.state.engine.workforce.list_agents(**({"status": status} if status else {}))
+
+    @app.post("/agents", status_code=201)
+    async def create_agent(body: AgentCreate, request: Request):
+        data = body.model_dump(exclude={"delegator_id"})
+        return app.state.engine.workforce.create_agent(
+            Agent(**data, created_by=getattr(request.state, "username", "pascal")),
+            delegator_id=body.delegator_id,
+        )
+
+    @app.get("/agents/{identifier}")
+    async def agent(identifier: str):
+        return app.state.engine.workforce.get_agent(identifier)
+
+    @app.patch("/agents/{identifier}")
+    async def update_agent(identifier: str, body: AgentUpdate, request: Request):
+        return app.state.engine.workforce.update_agent(
+            identifier,
+            body.model_dump(exclude_none=True),
+            actor=getattr(request.state, "username", "pascal"),
+        )
+
+    @app.post("/agents/{identifier}/archive")
+    async def archive_agent(identifier: str, request: Request):
+        return app.state.engine.workforce.archive_agent(
+            identifier, actor=getattr(request.state, "username", "pascal")
+        )
+
+    @app.post("/agent-messages", status_code=201)
+    async def send_agent_message(body: MessageCreate):
+        return app.state.engine.workforce.send_message(AgentMessage(**body.model_dump()))
+
+    @app.post("/agents/{identifier}/messages/receive")
+    async def receive_agent_messages(identifier: str):
+        return app.state.engine.workforce.receive_messages(identifier)
+
+    @app.post("/delegations", status_code=201)
+    async def delegate_task(body: DelegationCreate):
+        return app.state.engine.workforce.delegate_task(**body.model_dump())
+
+    @app.post("/delegations/{identifier}/result")
+    async def receive_agent_result(identifier: str, body: DelegationResult):
+        return app.state.engine.workforce.receive_agent_result(identifier, **body.model_dump())
 
     @app.get("/projects")
     async def projects():
