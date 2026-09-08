@@ -1,1 +1,177 @@
-/* placeholder -- owned by a parallel build subagent, will be replaced */
+/* ==========================================================================
+   Hufi — chat rooms module styles (rooms.js).
+   Builds on tokens/primitives from app.css (.card, .btn, .icon-btn, .faint,
+   .muted, .row) and reuses .bubble/.bubble--user/.turn from chat.css for
+   visual parity with the 1:1 chat surface. Does not redefine shell layout.
+   ========================================================================== */
+
+/* ---------- Overlay / panel ---------- */
+.room-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 10, .6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  z-index: 60;
+}
+.room-panel {
+  width: 100%;
+  max-width: 640px;
+  height: min(680px, 85vh);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  overflow: hidden;
+}
+
+.room-panel__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border-soft);
+  flex-shrink: 0;
+}
+.room-panel__heading { flex: 1; min-width: 0; }
+.room-panel__title {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.3;
+  word-break: break-word;
+}
+.room-panel__meta { margin: 2px 0 0; font-size: .82rem; }
+
+.room-panel__mockbanner {
+  flex-shrink: 0;
+  font-size: .78rem;
+  color: var(--warn);
+  background: var(--warn-bg);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+/* ---------- Participants ---------- */
+.room-participants {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
+  max-height: 110px;
+  overflow-y: auto;
+}
+.room-participant-chip {
+  font-size: .78rem;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+}
+
+/* ---------- Thread ---------- */
+.room-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.room-thread-empty { max-width: 46ch; }
+.room-turn { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.room-turn__time { font-size: .72rem; margin-top: 1px; }
+
+/* ---------- Composer ---------- */
+.room-composer {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-soft);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+.room-composer__bar {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  padding: var(--space-2);
+  transition: border-color var(--fast) var(--ease), box-shadow var(--fast) var(--ease);
+}
+.room-composer__bar:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.room-composer__input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 140px;
+  resize: none;
+  background: none;
+  border: none;
+  padding: var(--space-2);
+  color: var(--text);
+  font-size: .92rem;
+  line-height: 1.5;
+}
+.room-composer__input:focus { outline: none; }
+.room-composer__send {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--fast) var(--ease);
+}
+.room-composer__send:hover { background: var(--accent-hover); }
+.room-composer__send:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 2px; }
+.room-composer__note {
+  margin: var(--space-2) 0 0;
+  font-size: .74rem;
+  color: var(--text-faint);
+}
+
+/* ---------- Firmenchat entry point (floating, optional) ---------- */
+.room-fab {
+  position: fixed;
+  right: var(--space-4);
+  bottom: var(--space-4);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: var(--space-3) var(--space-5);
+  min-height: 44px;
+  box-shadow: var(--shadow-pop);
+  cursor: pointer;
+  font-size: .88rem;
+  font-weight: 600;
+  transition: background var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.room-fab:hover { background: var(--accent-hover); }
+.room-fab:active { transform: scale(.97); }
+.room-fab:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 480px) {
+  .room-overlay { padding: 0; }
+  .room-panel { max-width: none; height: 100%; border-radius: 0; }
+  .room-fab__label { display: none; }
+  .room-fab { padding: 0; width: 52px; height: 52px; justify-content: center; }
+}
