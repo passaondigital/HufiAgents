@@ -1,15 +1,33 @@
-# Codex Workforce State
+# Codex Workforce V1.x State
 
-- done: WF-1 schema/persistence for dynamic agents, messages, delegations and channels
-- done: WF-2 bounded spawn, update and archive lifecycle runtime/API
-- done: WF-3 durable agent messaging and delegation/result return
-- done: WF-4 fan-out/fan-in service support
-- open: WF-5 through WF-10 are owned by the parent integration stream
-- branch: `codex/v1x-workforce`
-- migrations: `003_dynamic_workforce` (additive; existing V1 databases supported)
-- APIs: `/agents`, `/agent-messages`, `/delegations`; lifecycle and receive endpoints
-- security: child capabilities must be a subset of delegator capabilities; child risk ceiling cannot exceed parent; no hidden in-memory workforce state
-- tests: `tests/unit/test_workforce.py`, `tests/integration/test_workforce_api.py`
-- remaining: integrate HufManager team mission after routine/workspace/connector interfaces land
-- blocker: none
-- next exact step: parent merges WF-1–4 commits and resolves the next migration number with routines workstream
+## Done
+
+- WF-1--4 dynamic-agent persistence, lifecycle, messaging, delegation and fan-out/fan-in.
+- WF-5--7 routines, controlled workspaces/sessions and connector registry.
+- WF-8 read-only HufManager team benchmark: Chief -> Lead -> Security/Product,
+  local-provider assessments, fan-in, independent reviewer and audit.
+
+## Open
+
+- WF-9 adversarial/security integration and WF-10 PR/integration verification.
+
+## Branch / commit
+
+- `codex/v1x-workforce`; base `64523da`; workforce commits `07bf1c4`, `542eaca`.
+
+## Migrations / APIs
+
+- Additive `003_dynamic_workforce`, `004_routines_connectors`; no destructive migration.
+- `/agents`, `/agent-messages`, `/delegations`, `/missions/hufmanager/team`.
+
+## Tests
+
+- Workforce/HufManager targeted test set: 8 passed; ruff clean.
+- Existing TestClient integration tests currently hang during lifespan entry in this
+  environment (also pre-existing `test_web_auth`); direct async lifespan is healthy.
+
+## Remaining / blocker / next exact step
+
+- Add adversarial upgrade/permission tests, run non-TestClient suite and prepare PR.
+- Blocker: TestClient/installed Starlette-httpx lifecycle incompatibility needs separate
+  environment remediation before the full HTTP suite can be claimed green.

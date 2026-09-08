@@ -17,6 +17,7 @@ from hufiagents.contracts import Agent, AgentMessage, Channel
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
+from hufiagents.workforce.team import HufManagerTeamMission
 
 PUBLIC_PATHS = {"/health", "/login"}
 
@@ -225,6 +226,11 @@ def create_app(settings=None, providers=None):
     @app.post("/missions", status_code=202)
     async def create_mission(body: MissionCreate):
         return app.state.engine.submit(body)
+
+    @app.post("/missions/hufmanager/team", status_code=202)
+    async def hufmanager_team_mission():
+        """Start the bounded, read-only HufManager sales-readiness benchmark."""
+        return await HufManagerTeamMission(app.state.engine).run()
 
     @app.get("/missions")
     async def missions(limit: int = Query(100, ge=1, le=100), offset: int = Query(0, ge=0)):
