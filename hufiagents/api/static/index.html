@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hufi</title>
+<link rel="stylesheet" href="/static/app.css" />
+<link rel="stylesheet" href="/static/agents.css" />
+<link rel="stylesheet" href="/static/chat.css" />
+</head>
+<body>
+  <div id="root" class="root">
+    <div id="topbar" class="topbar">
+      <button id="sidebarToggle" class="icon-btn" aria-label="Menü öffnen">☰</button>
+      <span id="topbarTitle" class="topbar-title">Hufi</span>
+      <button id="rightpaneToggle" class="icon-btn" aria-label="Details öffnen">ⓘ</button>
+    </div>
+
+    <div id="shell" class="shell">
+      <aside id="sidebar" class="sidebar" aria-label="Agenten">
+        <div class="sidebar-header">
+          <div class="brand">Hufi</div>
+          <button id="newHufiBtn" class="btn btn--ghost btn--sm">+ Neuer Hufi</button>
+        </div>
+        <div class="sidebar-search">
+          <input id="sidebarSearch" type="search" placeholder="Suchen…" autocomplete="off" />
+        </div>
+        <div class="sidebar-section-label">Mein Team</div>
+        <nav id="sidebarList" class="sidebar-list">
+          <p class="empty-hint">Lädt …</p>
+        </nav>
+        <div class="sidebar-footer">
+          <span id="connStatus" class="conn-status"></span>
+          <button id="logoutBtn" class="btn btn--ghost btn--sm">Abmelden</button>
+        </div>
+      </aside>
+      <div id="sidebarScrim" class="scrim"></div>
+
+      <main id="chat" class="chat">
+        <p class="empty-hint">Lädt …</p>
+      </main>
+
+      <aside id="rightpane" class="rightpane" aria-label="Kontext">
+        <div class="rightpane-header">
+          <span id="rightpaneTitle">Kontext</span>
+          <button id="rightpaneClose" class="icon-btn" aria-label="Schließen">✕</button>
+        </div>
+        <div id="rightpaneContent" class="rightpane-content">
+          <p class="empty-hint">Wähle einen Hufi, um Details zu sehen.</p>
+        </div>
+      </aside>
+      <div id="rightpaneScrim" class="scrim"></div>
+    </div>
+  </div>
+
+<script src="/static/app.js"></script>
+<script src="/static/agents.js"></script>
+<script src="/static/chat.js"></script>
+</body>
+</html>

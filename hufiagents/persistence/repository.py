@@ -220,20 +220,20 @@ class Store:
                 ).apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (2)")
             if 3 not in versions:
-                importlib.import_module(
-                    "hufiagents.persistence.migrations.003_work_evidence"
-                ).apply(connection)
+                importlib.import_module("hufiagents.persistence.migrations.003_dynamic_workforce").apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (3)")
             if 4 not in versions:
-                importlib.import_module("hufiagents.persistence.migrations.004_org_graph").apply(
-                    connection
-                )
+                importlib.import_module("hufiagents.persistence.migrations.004_routines_connectors").apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (4)")
             if 5 not in versions:
-                importlib.import_module(
-                    "hufiagents.persistence.migrations.005_skills_memory"
-                ).apply(connection)
+                importlib.import_module("hufiagents.persistence.migrations.005_work_evidence").apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (5)")
+            if 6 not in versions:
+                importlib.import_module("hufiagents.persistence.migrations.006_org_graph").apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (6)")
+            if 7 not in versions:
+                importlib.import_module("hufiagents.persistence.migrations.007_skills_memory").apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (7)")
 
     @contextmanager
     def transaction(self):

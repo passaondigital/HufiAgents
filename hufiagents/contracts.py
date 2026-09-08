@@ -89,7 +89,151 @@ class Agent(Contract):
     role: str
     capabilities: dict[str, Any]
     default_risk_ceiling: Risk = Risk.R1
-    status: Literal["active", "disabled"] = "active"
+    # `default_risk_ceiling` is retained for V1 tool-policy compatibility.
+    # New workforce code uses `risk_ceiling`; spawned agents always set both.
+    name: str = ""
+    description: str = ""
+    parent_agent_id: str | None = None
+    project_id: str | None = None
+    risk_ceiling: Risk = Risk.R1
+    model_preference: str | None = None
+    memory_scope: str = "agent"
+    workspace_id: str | None = None
+    status: Literal["active", "disabled", "archived"] = "active"
+    created_by: str = "system"
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class Channel(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    project_id: str | None = None
+    member_agent_ids: list[str] = Field(default_factory=list)
+    status: Literal["active", "archived"] = "active"
+    created_at: datetime = Field(default_factory=now)
+
+
+class Delegation(Contract):
+    id: str = Field(default_factory=uid)
+    parent_agent_id: str
+    child_agent_id: str
+    mission_id: str | None = None
+    task_id: str | None = None
+    objective: str = Field(min_length=1, max_length=16000)
+    status: Literal["queued", "running", "completed", "failed", "cancelled"] = "queued"
+    result: str | None = None
+    correlation_id: str = Field(default_factory=uid)
+    created_at: datetime = Field(default_factory=now)
+    completed_at: datetime | None = None
+
+
+class AgentMessage(Contract):
+    id: str = Field(default_factory=uid)
+    from_agent_id: str
+    to_agent_id: str | None = None
+    channel_id: str | None = None
+    mission_id: str | None = None
+    task_id: str | None = None
+    content: str = Field(min_length=1, max_length=32000)
+    created_at: datetime = Field(default_factory=now)
+    status: Literal["unread", "handled"] = "unread"
+    correlation_id: str | None = None
+    delegation_id: str | None = None
+
+
+class Routine(Contract):
+    """Durable product-level recurring mission; ``schedule`` is deliberately not cron."""
+
+    id: str = Field(default_factory=uid)
+    owner_agent_id: str
+    project_id: str | None = None
+    mission_template: dict[str, Any]
+    schedule: str = Field(min_length=1, max_length=1000)
+    timezone: str = Field(min_length=1, max_length=100)
+    enabled: bool = True
+    next_run: datetime | None = None
+    last_run: datetime | None = None
+    retry_policy: dict[str, Any] = Field(default_factory=lambda: {"max_attempts": 2})
+    retry_count: int = Field(0, ge=0, le=20)
+    notification_state: Literal["none", "pending", "sent", "failed"] = "none"
+    status: Literal["active", "paused", "archived"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
+class AgentWorkspace(Contract):
+    """A logical workspace. storage_key is not a host supplied path."""
+
+    id: str = Field(default_factory=uid)
+    agent_id: str
+    storage_key: str = Field(min_length=1, max_length=200)
+    status: Literal["active", "disabled", "archived"] = "active"
+    persistence_policy: Literal["restart", "ephemeral"] = "restart"
+    quota_bytes: int = Field(104857600, ge=0, le=10737418240)
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class WorkspaceSession(Contract):
+    id: str = Field(default_factory=uid)
+    agent_id: str
+    workspace_id: str
+    status: Literal["active", "closed", "expired"] = "active"
+    persistence_policy: Literal["restart", "ephemeral"] = "restart"
+    created_at: datetime = Field(default_factory=now)
+    last_activity: datetime = Field(default_factory=now)
+
+
+class ComputerSession(Contract):
+    id: str = Field(default_factory=uid)
+    agent_id: str
+    workspace_id: str
+    status: Literal["prepared", "active", "closed", "expired"] = "prepared"
+    persistence_policy: Literal["restart", "ephemeral"] = "ephemeral"
+    created_at: datetime = Field(default_factory=now)
+    last_activity: datetime = Field(default_factory=now)
+
+
+class BrowserSession(Contract):
+    id: str = Field(default_factory=uid)
+    agent_id: str
+    workspace_id: str
+    status: Literal["prepared", "active", "closed", "expired"] = "prepared"
+    persistence_policy: Literal["restart", "ephemeral"] = "ephemeral"
+    max_tabs: int = Field(1, ge=0, le=8)
+    memory_limit_mb: int = Field(512, ge=64, le=2048)
+    created_at: datetime = Field(default_factory=now)
+    last_activity: datetime = Field(default_factory=now)
+
+
+class ConnectorRegistration(Contract):
+    """Metadata only: credentials stay in a configured secret provider."""
+
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=100)
+    version: str = Field(min_length=1, max_length=100)
+    capabilities: list[str] = Field(default_factory=list)
+    modes: list[Literal["read", "write"]] = Field(default_factory=list)
+    auth_state: Literal["unconfigured", "configured", "expired", "error"] = "unconfigured"
+    permissions: list[str] = Field(default_factory=list)
+    risk_mapping: dict[str, str] = Field(default_factory=dict)
+    health: Literal["unknown", "healthy", "degraded", "unhealthy"] = "unknown"
+    enabled: bool = True
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
+class AgentConnectorAccess(Contract):
+    id: str = Field(default_factory=uid)
+    agent_id: str
+    connector_id: str
+    capabilities: list[str] = Field(default_factory=list)
+    modes: list[Literal["read", "write"]] = Field(default_factory=list)
+    risk_ceiling: Risk = Risk.R1
+    status: Literal["active", "disabled", "revoked"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
 
 
 class Handoff(Contract):

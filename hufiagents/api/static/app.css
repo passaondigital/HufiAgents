@@ -1,0 +1,358 @@
+/* ==========================================================================
+   Hufi — shared design tokens + app shell layout.
+   Owned by the integration layer. Feature modules (chat.css, agents.css)
+   build ON TOP of these tokens/classes; they do not redefine layout here.
+   ========================================================================== */
+
+:root {
+  color-scheme: dark;
+
+  --bg: #0b0e14;
+  --surface: #12161f;
+  --surface-2: #171c27;
+  --surface-raised: #1c2230;
+  --border: #232a38;
+  --border-soft: #1a202c;
+
+  --text: #eef1f6;
+  --text-muted: #8b93a3;
+  --text-faint: #7a86a0; /* QA fix: #5b6578 measured 2.9-3.3:1 against surfaces in use, below WCAG AA (4.5:1) for normal text */
+
+  --accent: #f47f1f;
+  --accent-soft: #ffad63;
+  --accent-bg: rgba(244, 127, 31, .14);
+  --accent-hover: #c14f15;
+
+  --ok: #f47f1f;
+  --ok-bg: rgba(244, 127, 31, .14);
+  --warn: #f59f0a;
+  --warn-bg: rgba(245, 159, 10, .14);
+  --bad: #f26d6d;
+  --bad-bg: rgba(242, 109, 109, .14);
+  --idle: #7c8699; /* QA fix: #6b7484 measured 3.8:1 for small pill text, below WCAG AA */
+  --idle-bg: rgba(107, 116, 132, .14);
+
+  --radius-sm: 8px;
+  --radius: 12px;
+  --radius-lg: 18px;
+  --radius-full: 999px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --shadow-card: 0 1px 2px rgba(0,0,0,.2), 0 8px 24px -8px rgba(0,0,0,.35);
+  --shadow-pop: 0 12px 32px -8px rgba(0,0,0,.5);
+
+  --ease: cubic-bezier(.2,.7,.2,1);
+  --fast: .15s;
+  --normal: .25s;
+
+  /* v1.1.2 visual pass: normal UI is sans-serif everywhere. Monospace is
+     reserved for code/logs/IDs/technical details (see .json-dump, code,
+     .audit-timeline__raw pre) -- never for headings, buttons, chat, sidebar
+     or status text. */
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font: 15px/1.5 var(--font);
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+button, input, textarea, select { font: inherit; color: inherit; }
+a { color: var(--accent-soft); }
+::selection { background: var(--accent-bg); }
+
+.empty-hint { color: var(--text-faint); font-size: .88rem; padding: var(--space-3) 0; }
+
+/* Monospace reserved for code/logs/IDs/technical details -- never for
+   headings, buttons, chat, sidebar or status text (see --font-mono above). */
+code, pre, .json-dump { font-family: var(--font-mono); }
+
+/* ---------- Root / topbar ---------- */
+.root {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  flex-shrink: 0;
+}
+.topbar-title { font-weight: 600; flex: 1; text-align: center; }
+@media (min-width: 1100px) { .topbar { display: none; } }
+
+.icon-btn {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  width: 40px; /* QA fix: 34px was below the ~40px touch-target minimum */
+  height: 40px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text); }
+
+/* ---------- Shell grid ---------- */
+.shell {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+@media (min-width: 700px) {
+  /* grid-template-rows is required: an implicit `auto` row sizes to its
+     tallest item's *content* height (e.g. a long JSON dump in the right
+     pane), and `align-items: stretch` then stretches every column -
+     including #chat - to that same inflated height, pushing the whole
+     page into a giant scroll. minmax(0, 1fr) caps the row at the grid's
+     own height so each column's internal overflow:auto can do its job. */
+  .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
+}
+@media (min-width: 1100px) {
+  /* v1.1.2: the right pane is no longer a permanent, often-empty third
+     column -- it only takes width when it actually has context to show
+     (agent, activity, routine, approval, result). Chat keeps the space
+     otherwise. Hufi.rightPane.show()/hide() (app.js) toggle this class. */
+  .shell { grid-template-columns: 280px minmax(0, 1fr); }
+  .shell.rightpane-open { grid-template-columns: 280px minmax(0, 1fr) 340px; }
+}
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  width: 280px;
+  max-width: 85vw;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(-100%);
+  transition: transform var(--normal) var(--ease);
+  z-index: 40;
+}
+.sidebar.sidebar--open { transform: translateX(0); }
+@media (min-width: 700px) {
+  /* QA fix: the mobile base rule sets z-index:40 so the sidebar sits above
+     its own scrim while it's an overlay; this query resets position/size
+     but not z-index, so from 700-1099px the sidebar (still z-index:40) sat
+     above the rightpane's scrim (z-index:35) even though it's no longer an
+     overlay itself, making the scrim visibly fail to dim the sidebar. */
+  .sidebar { position: static; transform: none; width: auto; max-width: none; height: 100%; min-height: 0; z-index: auto; }
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-4) var(--space-4);
+  gap: var(--space-2);
+}
+.brand { font-weight: 700; font-size: 1.1rem; letter-spacing: -.01em; }
+.sidebar-search { padding: 0 var(--space-4) var(--space-4); }
+.sidebar-search input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+}
+.sidebar-section-label {
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: .74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+}
+.sidebar-list { flex: 1; overflow-y: auto; padding: 0 var(--space-3) var(--space-4); }
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-top: 1px solid var(--border-soft);
+}
+.conn-status { font-size: .78rem; color: var(--text-faint); }
+
+/* ---------- Chat column ---------- */
+.chat {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+/* ---------- Right pane ---------- */
+.rightpane {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: 380px;
+  max-width: 90vw;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform var(--normal) var(--ease);
+  z-index: 40;
+}
+.rightpane.rightpane--open { transform: translateX(0); }
+@media (min-width: 1100px) {
+  /* Not permanently rendered any more -- only laid out once #shell carries
+     .rightpane-open (see the grid rule above), set by Hufi.rightPane.show(). */
+  .rightpane { display: none; }
+  .shell.rightpane-open .rightpane {
+    display: flex;
+    position: static;
+    transform: none !important;
+    width: auto;
+    max-width: none;
+    height: 100%;
+    min-height: 0;
+  }
+}
+.rightpane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-soft);
+  font-weight: 600;
+}
+/* Always available now -- the pane is closable at every width, not just
+   below 1100px, since it's no longer a permanent desktop column. */
+.rightpane-content { flex: 1; overflow-y: auto; padding: var(--space-4); }
+
+/* ---------- Scrims (mobile/tablet overlay backdrops) ---------- */
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 6, 10, .55);
+  z-index: 35;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--normal) var(--ease);
+}
+.scrim.scrim--visible { opacity: 1; pointer-events: auto; }
+@media (min-width: 1100px) { .scrim { display: none; } }
+
+/* ---------- Shared primitives (buttons, badges, cards, avatars) ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: var(--space-2) var(--space-4);
+  font-size: .88rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.btn:hover { background: var(--surface-raised); }
+.btn:active { transform: scale(.97); }
+.btn--sm { padding: var(--space-1) var(--space-3); font-size: .82rem; }
+.btn--ghost { background: none; }
+.btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* v1.1.2 fix: this was a leftover #3f6bec (blue) from before the warm
+   rebrand, invisible until hover -- real, visible blue on every primary
+   button. */
+.btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+.btn--danger { border-color: var(--bad); color: var(--bad); background: none; }
+.btn--danger:hover { background: var(--bad-bg); }
+.btn:disabled { opacity: .5; cursor: default; pointer-events: none; }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: .15rem .6rem;
+  border-radius: var(--radius-full);
+  font-size: .74rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pill.tone-ok { background: var(--ok-bg); color: var(--ok); }
+.pill.tone-warn { background: var(--warn-bg); color: var(--warn); }
+.pill.tone-bad { background: var(--bad-bg); color: var(--bad); }
+.pill.tone-idle { background: var(--idle-bg); color: var(--idle); }
+.pill.tone-accent { background: var(--accent-bg); color: var(--accent-soft); }
+
+/* Quieter than a pill -- a status signal that doesn't compete for
+   attention next to every single list row (sidebar agent rows). */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.tone-ok { background: var(--ok); }
+.status-dot.tone-warn { background: var(--warn); }
+.status-dot.tone-bad { background: var(--bad); }
+.status-dot.tone-idle { background: var(--idle); }
+
+.card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+  box-shadow: var(--shadow-card);
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: .85rem;
+  color: #0b0e14;
+  flex-shrink: 0;
+}
+.avatar--sm { width: 26px; height: 26px; font-size: .72rem; }
+.avatar--lg { width: 52px; height: 52px; font-size: 1.1rem; }
+
+/* ---------- Utility ---------- */
+.stack { display: flex; flex-direction: column; gap: var(--space-3); }
+.row { display: flex; align-items: center; gap: var(--space-3); }
+/* [hidden] is a low-specificity UA rule; the two class rules above outrank
+   it, so toggling the `hidden` attribute alone would not hide a .row/.stack
+   element. Re-assert display:none for the hidden state at matching specificity. */
+.row[hidden], .stack[hidden] { display: none; }
+.spacer { flex: 1; }
+.muted { color: var(--text-muted); }
+.faint { color: var(--text-faint); }
+[data-fade-in] { animation: hufiFadeIn var(--normal) var(--ease); }
+@keyframes hufiFadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }

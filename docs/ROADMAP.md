@@ -1,124 +1,230 @@
 # HufiAgents Roadmap
 
-## Phase 0 — Inventory and bootstrap
+**Updated:** 2026-09-08  
+**Production baseline:** `v1.1.2` at `https://agents.heyhufi.com`  
+**North Star:** one instruction from Pascal should produce as much finished, reviewed, economically useful work as possible with minimal human coordination.
 
-- Read-only XXL audit. **Done** — see `docs/XXL-AUDIT.md` (2026-09-07).
-  Key findings that shape every later phase: host is memory-constrained (not
-  CPU/disk-constrained); no Ollama installed — real local inference is
-  llama.cpp + the existing `hufi-local-ai-router` at `127.0.0.1:8090`
-  (ADR-003); Hermes/HufiLab/Supabase are live production dependencies and
-  must not be touched; no native Postgres/Redis service exists.
-- Identify existing Hermes/OpenClaw/Ollama/Qwen/HufiBoss components. **Done**
-  — see `docs/XXL-AUDIT.md` "Existing AI/agent components".
-- Record running services, ports and resource use. **Done.**
-- Establish repo structure, CI, dev commands and safe secret handling.
-  **Open — Codex, see `docs/HANDOFF-CODEX-V1.md`.**
+This file is the concise delivery roadmap. The binding long-form target is `docs/HUFIAGENTS-TARGET-PLAN.md`.
 
-**Exit:** `docs/XXL-AUDIT.md` exists (done) and a reproducible development
-stack starts without disturbing existing services (open, Codex).
+## Completed foundation — V1.0.x
 
-## Phase 1 — Autonomous core MVP
+Real and production-proven:
 
-Architecture is now binding, not exploratory — see `docs/ARCHITECTURE.md`
-§§1-13 and `docs/HANDOFF-CODEX-V1.md` for exact contracts, schemas and file
-layout. Build order matters; follow it so every step stays testable without
-a live model call:
+- FastAPI + SQLite core,
+- login/auth + HTTPS deployment,
+- mission/task lifecycle,
+- local HUFI AI Router integration,
+- real local Qwen execution,
+- review + retry,
+- crash/heartbeat recovery,
+- risk/approval engine,
+- append-only audit,
+- isolated workspaces / Bubblewrap,
+- controlled Git/GitHub push/PR path,
+- HufManager as first real project connector/use case.
 
-1. Repo bootstrap (package layout, `pyproject.toml`, lint/test commands, CI
-   using only the `fake` provider).
-2. Persistence layer: SQLite + repository interface + `schema_migrations`
-   (ADR-002).
-3. Core contracts as Pydantic models + tables: Mission, Task, Agent, Handoff,
-   ToolCall, ToolResult, ReviewResult, ApprovalRequest, AuditEvent
-   (`docs/ARCHITECTURE.md` §3).
-4. Task state machine + transition rules (`docs/ARCHITECTURE.md` §4),
-   unit-tested independent of any real tool/model call.
-5. Model Router: `fake` provider first (unblocks CI), then the
-   `hufi-local-router` adapter against `127.0.0.1:8090` (ADR-003).
-6. Files/shell/git tools in an isolated workspace directory (ADR-005),
-   Risk/Approval Engine (`docs/ARCHITECTURE.md` §8) wired in before any tool
-   can execute a side effect.
-7. Audit log (append-only, §3.8) and reviewer agent (§10, ADR-006 — reviewer
-   pass mandatory even on trivial tasks).
-8. Recovery: heartbeat + reaper + idempotency (`docs/ARCHITECTURE.md` §7),
-   proven by killing the process mid-task and restarting it.
+Historical details remain in `docs/CORE-V1.md`, `docs/V1-RELEASE.md`, `docs/CONNECTOR-HUFMANAGER.md`, `docs/PHASE2-GIT-PR-WORKFLOW.md`, `docs/DECISIONS.md` and related review records.
 
-**Exit:** green end-to-end test for Mission -> Task -> Agent -> Tool ->
-Review -> Persisted Result, using the `fake` provider in CI, plus one manual
-run against the live `hufi-local-router`. State survives a process restart
-(§7 restart recovery proof).
+## Shipped — V1.1.x
 
-## Phase 2 — Coding workforce
+`v1.1.2` is the stable product baseline.
 
-- Git worktree/branch automation.
-- Builder + reviewer agents.
-- Test/CI integration.
-- GitHub PR workflow. **Push + draft-PR mechanics done** — see
-  `docs/DECISIONS.md` ADR-009 and `docs/PHASE2-GIT-PR-WORKFLOW.md`: real
-  `git push`/`GitHubTool.open_pr`, gated behind a new `integrator` agent
-  (R2), server-configured remote/repo/token only. Not yet done: cloning an
-  existing external repository into a mission workspace (needed before this
-  can act on a real project's existing code, not just a fresh workspace
-  repo) — left for the HufManager connector below to avoid overlap.
-- HufManager as first real project connector/use case. **Connector built and
-  live-verified** — see `docs/DECISIONS.md` ADR-010 and
-  `docs/CONNECTOR-HUFMANAGER.md`: `ProjectRegistry`
-  (`config/projects.yaml`), `GitTool.clone` + branch-isolation +
-  main/master protection + foreign-remote blocking, project-scoped
-  `ShellTool.run_tests`/`run_build`/`run_lint`, `Task.dry_run`. A real
-  read-only mission against `passaondigital/hufmanager` (real clone, real
-  `hufi-local-router` model call, reviewer approve, completed) ran twice
-  live. Not yet done: running `npm install`/tests/build for real against
-  HufManager's actual dependency tree (deliberately deferred, see
-  `docs/CONNECTOR-HUFMANAGER.md` "Bekannte Risiken"), and giving the model
-  actual visibility into cloned file contents (today only hand-placed
-  `constraints` reach it).
+Shipped capabilities include:
 
-**Exit:** HufiAgents can complete a bounded real repository task and prepare a verified PR.
-Push/PR mechanics and the HufManager connector are both real and tested;
-a genuinely code-editing (not just report-writing) real mission against
-HufManager, with a real test/build run, is the concrete next step to fully
-close this exit criterion.
+- chat-first UI,
+- dynamic/persistent agents,
+- agent messaging and delegation,
+- fan-out/fan-in team execution,
+- real routines API/UI,
+- workspace/session foundation,
+- connector registry foundation,
+- HufManager team mission,
+- human-language approvals/results,
+- safe DOM-based result rendering,
+- 10-year-old UX rules,
+- warm Hufi visual system,
+- responsive/browser QA across desktop/tablet/mobile.
 
-## Phase 3 — Browser and infrastructure operations
+V1.1.x is now frozen except for real bug/security fixes.
 
-- Playwright browser worker. **Resource note:** a Chromium worker is
-  memory-heavy; per `docs/XXL-AUDIT.md` this must not launch by default
-  alongside the model workers without a fresh headroom check (`free -h`)
-  and a bounded concurrency limit (1 browser context at a time for V1).
-- SSH tool with least-privilege policy (`docs/ARCHITECTURE.md` §6.5) — hard
-  R3/R4 for any host-level sshd/firewall/root action, never auto-allow
-  regardless of config (ADR pattern from ADR-006: structural, not optional).
-- Scheduled missions.
-- Credential handling and redaction.
-- Recoverable sessions.
+## V1.2 — Hufi learns, proves work and becomes a digital company
 
-**Exit:** safe browser and server tasks can be executed and audited with approval gates.
+**Status:** active parallel implementation.
 
-## Phase 4 — Agent teams
+V1.2 combines the learning/efficiency layer with the new Digital Company and Visible Work foundations.
 
-- Chief -> Project Lead -> Specialists.
-- Agent-to-agent handoffs.
-- Parallel execution with resource budgets.
-- Shared project knowledge with isolation.
-- Cost/model routing.
+### Backend / engine — Codex track
 
-**Exit:** at least two specialist agents can collaborate on one mission with independent review.
+- Work Evidence persistence and APIs,
+- evidence-source traceability,
+- secret/sensitive-data redaction,
+- Company Graph data model,
+- teams,
+- projects and memberships,
+- resources,
+- typed relationships,
+- agent/team/project/company chat-room context,
+- Skill Engine,
+- scoped Memory,
+- Progressive Context Loader,
+- Learning Loop after successful reviewed missions,
+- Cost Governor,
+- local-first routing policy,
+- No-LLM deterministic routines,
+- Credential / Secret capability foundation,
+- real work-summary service,
+- additive SQLite migrations,
+- API contract in `docs/implementation/V1_2_API_CONTRACT.md`.
 
-## Phase 5 — Grok Bot benchmark
+### Product / frontend — Claude Code track
 
-Run comparable missions through official Grok Bot and HufiAgents. Measure:
+- Org-Canvas,
+- agent/team/project/resource cards,
+- repository grid/cards,
+- drag & drop relationship management,
+- keyboard/form alternatives to drag & drop,
+- multi-membership visualization,
+- organisation/teams/projects/resources/list views,
+- agent chat,
+- team chat,
+- project chat,
+- company chat,
+- Visible Work / evidence cards,
+- `Einfach / Transparent / Live` modes,
+- truthful work summary,
+- secure credential/token UX,
+- desktop/tablet/mobile/accessibility QA.
 
-- success rate,
-- elapsed time,
-- human interventions,
-- recovery,
-- output quality,
-- cost,
-- security/policy violations.
+### V1.2 product laws
 
-Close the highest-value gaps rather than chasing cosmetic 1:1 similarity.
+1. No fake progress.
+2. No fake snapshots.
+3. No fake live computer.
+4. No fake success.
+5. Normal users see people, teams, projects and work — not provider/router/task-ID jargon.
+6. Secrets are never ordinary chat content.
+7. Team/project membership does not silently grant capability/risk rights.
+8. One agent may belong to several teams/projects at the same time.
+
+### V1.2 acceptance evidence
+
+Before release, prove on a production-shaped DB copy and real XXL environment:
+
+- existing V1.1.2 data survives migration,
+- a real local-Qwen mission produces real Work Evidence,
+- a second similar mission reuses approved Skill/Memory context,
+- a healthy deterministic routine performs **0 model calls**,
+- a controlled fake-secret case is safely redacted,
+- a team/project/resource/room graph can be created and read back,
+- UI consumes real APIs without shipping fake backend state,
+- full tests/lint/compile and real browser QA are green.
+
+## V1.3 — Hufi gets hands
+
+Theme: persistent Computer / Browser / Workspace.
+
+Build:
+
+- persistent per-agent workspace,
+- real browser automation,
+- retained safe browser sessions,
+- computer/session lifecycle,
+- controlled file interaction,
+- real screenshots and evidence artifacts,
+- optional live preview,
+- user handoff,
+- reset/snapshot/recovery,
+- MCP tool adapter,
+- connector permission scopes.
+
+Visible Work becomes richer here because screenshots/live views can be generated from real sessions rather than placeholders.
+
+**Exit:** Pascal can ask a Hufi to inspect and interact with a real web app, receive sanitized evidence, and get a reviewed result without manually driving the browser.
+
+## V1.4 — Hufi is always available
+
+Theme: Gateway / Events / Devices / Channels.
+
+Build selectively:
+
+- Hufi Gateway,
+- notifications,
+- voice entry points,
+- device/node concept,
+- selected messaging channels,
+- event triggers,
+- channel-independent mission identity,
+- always-on routines/watchers.
+
+Only add channels when they remove real friction.
+
+## V1.5 — Product Capability Layer
+
+Expose stable internal capability interfaces so real Hufi products can reuse the engine without duplicating orchestration.
+
+First reuse targets:
+
+- Hufi Manager,
+- HufiApp.
+
+Reusable capabilities include:
+
+- chat/mission,
+- skills,
+- memory,
+- routines,
+- Work Evidence,
+- approvals,
+- resources/connectors,
+- credential handles,
+- notifications,
+- model/cost policy.
+
+**Exit:** at least one meaningful Hufi capability is implemented once and consumed from at least two product surfaces.
+
+## V2 — AgentHufi / HufiApp Pro
+
+Only after the internal engine is stable and genuinely useful:
+
+- public user-created agents,
+- teams/projects,
+- product-safe browser/computer,
+- tenant-scoped memory,
+- usage/cost budgets,
+- onboarding,
+- billing only when commercially required.
+
+## Later — HufiCloud
+
+Composable builder/platform for:
+
+- agents,
+- skills,
+- models,
+- memory,
+- projects,
+- teams,
+- resources,
+- browser/computer,
+- connectors,
+- routines,
+- workflows,
+- product surfaces.
+
+Users assemble outcomes such as “My Company” rather than infrastructure primitives.
+
+## Canonical product specs
+
+- `docs/HUFIAGENTS-TARGET-PLAN.md`
+- `docs/HUFIAGENTS-CAPABILITY-MAP.md`
+- `docs/HUFIAGENTS-PRODUCT-VISION.md`
+- `docs/product/VISIBLE-WORK.md`
+- `docs/product/ORG-CANVAS.md`
+- `docs/product/ORG-CANVAS-WORK-EVIDENCE.md`
+- `docs/SECURITY.md`
+- `docs/OPERATING_MODEL.md`
+- `docs/EVALUATION.md`
 
 ## Business guardrail
 
-HufiAgents work must not become another endless meta-project. Once the coding workforce is capable enough, HufManager becomes the first production mission and remains a top priority.
+HufiAgents must not become an endless meta-project. The engine exists to make real products and real operations easier, cheaper and more autonomous. HufManager remains the first business-priority proof case.
