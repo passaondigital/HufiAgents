@@ -368,7 +368,12 @@
     if (!mountedContainer) return;
     const container = mountedContainer;
     container.innerHTML = '';
-    container.className = 'work-view';
+    // Only ADD the module class -- the container already carries the base
+    // `.view` class the shell relies on (`.view[hidden]{display:none}`, see
+    // app.css). Overwriting className here removed that class entirely, so
+    // this view kept rendering underneath every other one regardless of
+    // its `hidden` attribute (found during integration QA).
+    container.classList.add('work-view');
     container.appendChild(buildHeader());
 
     if (loadError) {

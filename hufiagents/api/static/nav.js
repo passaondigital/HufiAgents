@@ -55,6 +55,14 @@
         try { prevEntry.onHide(); } catch (e) { console.error(e); }
       }
 
+      // The right pane always shows context for whatever was selected in
+      // the PREVIOUS view (an agent card, a canvas node, ...). That's stale
+      // the moment the user switches top-level views, and on mobile it's a
+      // fixed full-height overlay that would otherwise sit on top of the
+      // primary nav itself, silently blocking the next tap. Always close it
+      // on navigation -- "the right pane shows only what matters now".
+      Hufi.rightPane.hide();
+
       sections[current].hidden = true;
       sections[name].hidden = false;
       root.dataset.activeView = name;
