@@ -585,14 +585,14 @@
       </div>
     `);
     const textEl = card.querySelector('.result-card__text');
-    textEl.textContent = short;
+    renderMarkdown(textEl, short);
 
     const expandBtn = card.querySelector('.result-expand');
     if (expandBtn) {
       let expanded = false;
       expandBtn.addEventListener('click', () => {
         expanded = !expanded;
-        textEl.textContent = expanded ? full : short;
+        renderMarkdown(textEl, expanded ? full : short);
         expandBtn.textContent = expanded ? 'Weniger anzeigen' : 'Bericht öffnen';
       });
     }
@@ -610,6 +610,30 @@
 
     resultSlot.appendChild(card);
     resultSlot.appendChild(mini);
+  }
+
+  // Small safe Markdown subset. Text is always inserted through textContent;
+  // links only accept http(s), so model output cannot introduce HTML/script.
+  function renderMarkdown(target, source) {
+    target.replaceChildren();
+    const inline = (text) => {
+      const span = document.createElement('span');
+      const parts = text.split(/(`[^`]*`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]*\))/g);
+      for (const part of parts) {
+        if (/^`/.test(part)) { const code = document.createElement('code'); code.textContent = part.slice(1, -1); span.append(code); }
+        else if (/^\*\*/.test(part)) { const strong = document.createElement('strong'); strong.textContent = part.slice(2, -2); span.append(strong); }
+        else if (/^\*/.test(part)) { const em = document.createElement('em'); em.textContent = part.slice(1, -1); span.append(em); }
+        else { const match = part.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/); if (match) { const link = document.createElement('a'); link.href = match[2]; link.textContent = match[1]; link.target = '_blank'; link.rel = 'noopener noreferrer'; span.append(link); } else span.append(document.createTextNode(part)); }
+      }
+      return span;
+    };
+    let list = null;
+    for (const line of source.split('\n')) {
+      const heading = line.match(/^(#{1,3})\s+(.+)/); const bullet = line.match(/^[-*]\s+(.+)/); const number = line.match(/^\d+\.\s+(.+)/);
+      if (heading) { list = null; const node = document.createElement(`h${heading[1].length}`); node.append(inline(heading[2])); target.append(node); }
+      else if (bullet || number) { const ordered = Boolean(number); if (!list || list.tagName !== (ordered ? 'OL' : 'UL')) { list = document.createElement(ordered ? 'ol' : 'ul'); target.append(list); } const item = document.createElement('li'); item.append(inline((bullet || number)[1])); list.append(item); }
+      else if (line.trim()) { list = null; const p = document.createElement('p'); p.append(inline(line)); target.append(p); }
+    }
   }
 
   // ---------- Public contract for the sidebar (agents.js) ----------
