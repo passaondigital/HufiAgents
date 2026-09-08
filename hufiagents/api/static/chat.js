@@ -101,9 +101,81 @@
   // ---------- DOM refs (assigned in render()) ----------
   let threadEl, emptyEl, listEl, inputEl, sendBtn, micBtn;
   const state = { missions: new Map() };
+  let currentAgentId = null;
 
   function scrollToBottom() {
     requestAnimationFrame(() => { threadEl.scrollTop = threadEl.scrollHeight; });
+  }
+
+  // ---------- Routine detection (MUSS 1) ----------
+  // A recurring-sounding chat message ("Mach das jeden Montag um 8 Uhr.")
+  // must never be silently run as a one-off mission -- the backend routine
+  // grammar (hufiagents/workforce/routines.py) only understands
+  // "every day at HH:MM" / "every <weekday> at HH:MM", so this detector's
+  // only job is: recognise the small set of German phrasings that map onto
+  // that exact grammar, and be honest (ask, or say "not supported yet")
+  // about everything else rather than guessing. No cron syntax anywhere in
+  // the UI; every "clear" result below is created through the real
+  // POST /routines API, never faked client-side.
+  const WEEKDAYS_DE_EN = {
+    montag: 'monday', montags: 'monday',
+    dienstag: 'tuesday', dienstags: 'tuesday',
+    mittwoch: 'wednesday', mittwochs: 'wednesday',
+    donnerstag: 'thursday', donnerstags: 'thursday',
+    freitag: 'friday', freitags: 'friday',
+    samstag: 'saturday', samstags: 'saturday',
+    sonnabend: 'saturday', sonnabends: 'saturday',
+    sonntag: 'sunday', sonntags: 'sunday',
+  };
+  const WEEKDAY_LABEL_DE = {
+    monday: 'montags', tuesday: 'dienstags', wednesday: 'mittwochs',
+    thursday: 'donnerstags', friday: 'freitags', saturday: 'samstags', sunday: 'sonntags',
+  };
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  function extractTimeDe(lower) {
+    let m = lower.match(/\b([01]?\d|2[0-3])[:.]([0-5]\d)\s*(?:uhr)?\b/);
+    if (m) return `${pad2(m[1])}:${m[2]}`;
+    m = lower.match(/\b([01]?\d|2[0-3])\s*uhr\b/);
+    if (m) return `${pad2(m[1])}:00`;
+    m = lower.match(/\bum\s+([01]?\d|2[0-3])\b(?!\s*[:.]\d)/);
+    if (m) return `${pad2(m[1])}:00`;
+    return null;
+  }
+
+  function detectRoutineIntent(text) {
+    const lower = text.toLowerCase();
+
+    let weekdayEn = null;
+    for (const word of Object.keys(WEEKDAYS_DE_EN)) {
+      if (new RegExp(`\\b${word}\\b`).test(lower)) { weekdayEn = WEEKDAYS_DE_EN[word]; break; }
+    }
+    const dailySignal = /\b(t(ä|ae)glich|jeden tag|jeden morgen|jeden abend)\b/.test(lower);
+    const weeklyVague = /\b(jede woche|w(ö|oe)chentlich)\b/.test(lower) && !weekdayEn;
+    const monthlySignal = /\b(jeden monat|monatlich)\b/.test(lower);
+    const tomorrowSignal = /\bmorgen\s+um\b/.test(lower) && !/\bjeden morgen\b/.test(lower);
+    const time = extractTimeDe(lower);
+
+    if (monthlySignal) {
+      return { type: 'unsupported', message: 'Monatliche Routinen kann ich in dieser Version noch nicht einrichten — nur täglich oder an einem festen Wochentag. Sag mir gern einen festen Wochentag, zum Beispiel „jeden Montag um 8 Uhr“.' };
+    }
+    if (tomorrowSignal) {
+      return { type: 'unsupported', message: 'Einzelne Aufträge kann ich aktuell nur sofort ausführen, noch nicht für einen späteren Zeitpunkt vormerken. Soll ich das gleich jetzt erledigen, oder meintest du eine wiederkehrende Routine, zum Beispiel „jeden Montag um 8 Uhr“?' };
+    }
+    if (weeklyVague) {
+      return { type: 'clarify', question: 'Das klingt nach einer wiederkehrenden Aufgabe — an welchem Wochentag soll ich das erledigen? Zum Beispiel „jeden Montag um 8 Uhr“.' };
+    }
+    if (weekdayEn || dailySignal) {
+      if (!time) {
+        return { type: 'clarify', question: 'Gerne richte ich das als Routine ein — um wie viel Uhr soll ich das erledigen?' };
+      }
+      const schedule = weekdayEn ? `every ${weekdayEn} at ${time}` : `every day at ${time}`;
+      const label = weekdayEn ? `${WEEKDAY_LABEL_DE[weekdayEn]} um ${time}` : `täglich um ${time}`;
+      const cadence = weekdayEn ? 'wöchentliche' : 'tägliche';
+      return { type: 'clear', schedule, label, cadence };
+    }
+    return null;
   }
 
   // ---------- Shell ----------
@@ -170,9 +242,108 @@
   function handleSend() {
     const text = inputEl.value.trim();
     if (!text) return;
+    const routine = detectRoutineIntent(text);
+    if (routine && routine.type === 'clear') {
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+      startRoutineTurn(text, routine);
+      return;
+    }
+    if (routine && (routine.type === 'clarify' || routine.type === 'unsupported')) {
+      inputEl.value = '';
+      inputEl.style.height = 'auto';
+      startClarifyTurn(text, routine.message || routine.question);
+      return;
+    }
     inputEl.value = '';
     inputEl.style.height = 'auto';
     startTurn(text);
+  }
+
+  function appendUserBubble(text) {
+    if (!emptyEl.hidden) {
+      emptyEl.hidden = true;
+      listEl.hidden = false;
+    }
+    const turnEl = Hufi.el(`
+      <div class="turn" data-fade-in>
+        <div class="bubble bubble--user" data-fade-in></div>
+        <div class="bubble bubble--hufi" data-fade-in></div>
+      </div>
+    `);
+    turnEl.querySelector('.bubble--user').textContent = text;
+    listEl.appendChild(turnEl);
+    scrollToBottom();
+    return turnEl;
+  }
+
+  // A routine-shaped message that is too ambiguous for the narrow backend
+  // schedule grammar (weekly-without-a-day, monthly, "tomorrow at") gets an
+  // honest Hufi reply instead of either a fake routine or a misinterpreted
+  // one-off mission -- no mission or routine is created either way.
+  function startClarifyTurn(text, message) {
+    const turnEl = appendUserBubble(text);
+    turnEl.querySelector('.bubble--hufi').textContent = message;
+  }
+
+  function startRoutineTurn(text, routine) {
+    const turnEl = appendUserBubble(text);
+    const hufiBubble = turnEl.querySelector('.bubble--hufi');
+    hufiBubble.textContent = `Ich richte daraus eine ${routine.cadence} Routine ein: ${text} — ${routine.label}.`;
+
+    const card = Hufi.el(`
+      <div class="card routine-confirm" data-fade-in>
+        <div class="row routine-confirm__actions">
+          <button type="button" class="btn btn--primary" data-action="create">Erstellen</button>
+          <button type="button" class="btn btn--ghost" data-action="change">Ändern</button>
+          <button type="button" class="btn btn--ghost" data-action="cancel">Abbrechen</button>
+        </div>
+        <div class="routine-confirm__status" hidden></div>
+      </div>
+    `);
+    turnEl.appendChild(card);
+    scrollToBottom();
+
+    const statusEl = card.querySelector('.routine-confirm__status');
+    const actionsEl = card.querySelector('.routine-confirm__actions');
+
+    card.querySelector('[data-action="create"]').addEventListener('click', async () => {
+      actionsEl.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+      try {
+        const created = await Hufi.api('/routines', {
+          method: 'POST',
+          body: JSON.stringify({
+            owner_agent_id: currentAgentId || 'builder',
+            mission_template: { outcome: text },
+            schedule: routine.schedule,
+            timezone: (Intl.DateTimeFormat().resolvedOptions().timeZone) || 'Europe/Berlin',
+          }),
+        });
+        actionsEl.hidden = true;
+        statusEl.hidden = false;
+        statusEl.textContent = created.next_run
+          ? `Routine eingerichtet. Nächster Lauf: ${Hufi.fmtTime(created.next_run)}.`
+          : 'Routine eingerichtet.';
+      } catch (error) {
+        actionsEl.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+        statusEl.hidden = false;
+        statusEl.textContent = 'Die Routine konnte nicht eingerichtet werden: ' + error.message;
+      }
+    });
+
+    card.querySelector('[data-action="change"]').addEventListener('click', () => {
+      actionsEl.hidden = true;
+      statusEl.hidden = false;
+      statusEl.textContent = 'Kein Problem — passe den Text unten an und sende ihn erneut.';
+      inputEl.value = text;
+      inputEl.focus();
+    });
+
+    card.querySelector('[data-action="cancel"]').addEventListener('click', () => {
+      actionsEl.hidden = true;
+      statusEl.hidden = false;
+      statusEl.textContent = 'Abgebrochen — nichts wurde eingerichtet.';
+    });
   }
 
   // ---------- Turns (one per sent message / mission) ----------
@@ -201,9 +372,15 @@
 
     let mission;
     try {
+      // QA fix (MUSS 3): a hardcoded risk_ceiling here meant the frontend
+      // was making a risk decision that belongs to the backend policy layer
+      // (docs/product/PRODUCT-FLOW-FINDINGS.md). Omit it entirely and let
+      // the server's own default (and, per task/agent, the real policy
+      // engine) decide -- the approval card below already renders correctly
+      // whenever the backend actually produces a waiting_approval mission.
       mission = await Hufi.api('/missions', {
         method: 'POST',
-        body: JSON.stringify({ outcome: text, risk_ceiling: 'R1' }),
+        body: JSON.stringify({ outcome: text }),
       });
     } catch (error) {
       const hufiBubble = turnEl.querySelector('.bubble--hufi');
@@ -423,6 +600,7 @@
     openAgent(agentId) {
       if (!threadEl) return;
       if (!agentId) return;
+      currentAgentId = agentId;
       if (!emptyEl.hidden) {
         emptyEl.hidden = true;
         listEl.hidden = false;
