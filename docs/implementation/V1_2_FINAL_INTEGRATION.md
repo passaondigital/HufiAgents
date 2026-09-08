@@ -1,6 +1,6 @@
 # V1.2 Final Integration Release Candidate
 
-Backend PR #22 (`8298e8e`), Digital Company UI PR #24 (`f46dc9b`), and Claude acceptance fixes PR #26 (`32dc5e7`) are contained in PR #25 / `codex/v1-2-final-integration` at `c4cbf60`, based on `origin/main` `84d2b5e`.
+Backend PR #22, Digital Company UI PR #24, and Claude acceptance fixes PR #26 are contained in merged PR #25. Production deploys main commit `887ce6871da2f1fd420d1b0ecf4ae830941fab23` and tag `v1.2.0`.
 
 ## Integration status
 
@@ -15,7 +15,7 @@ Backend PR #22 (`8298e8e`), Digital Company UI PR #24 (`f46dc9b`), and Claude ac
 
 - Backend: 292 tests passed; Ruff, format and compileall passed.
 - Migration: production-shaped copy migrated idempotently; legacy counts preserved; restart persistence passed.
-- Real Qwen, browser Playwright QA, and runtime no-LLM call-count proof are `ENVIRONMENT_BLOCKED` in this execution environment (local router namespace unavailable). No production service or database was changed.
+- Real local model mission proof passed in production through `hufi-local-router`/`hufi-qwen9`; Codex browser recheck and runtime no-LLM call-count proof remain environment-blocked. Production smoke used an in-memory server-signed session without exposing credentials.
 - Remaining mocks are isolated development fixtures only and are not used in normal API-unavailable RC flow.
 
 ## Open P2 follow-ups
