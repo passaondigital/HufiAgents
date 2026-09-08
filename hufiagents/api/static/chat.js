@@ -109,6 +109,9 @@
   // ---------- Shell ----------
   function render() {
     Hufi.mount.chat.innerHTML = '';
+    // Hufi.el() (app.js) returns only the string's first element, so the
+    // thread and the input bar -- two sibling elements -- must be built and
+    // appended separately rather than passed to one Hufi.el() call.
     Hufi.mount.chat.appendChild(Hufi.el(`
       <div class="chat-thread" id="chatThread">
         <div class="chat-col">
@@ -121,6 +124,8 @@
           <div class="chat-msglist" id="chatMsgList" hidden></div>
         </div>
       </div>
+    `));
+    Hufi.mount.chat.appendChild(Hufi.el(`
       <div class="chat-inputbar">
         <div class="chat-col">
           <button type="button" class="chat-mic" id="chatMic" title="Spracheingabe (bald verfügbar)" disabled>🎤</button>
