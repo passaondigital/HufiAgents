@@ -186,7 +186,6 @@
       checkBtn.disabled = true;
       errorEl.hidden = true;
 
-      let mock = false;
       let maskedHint = null;
       try {
         const response = await Hufi.api('/credentials', {
@@ -195,14 +194,17 @@
         });
         if (response && typeof response.masked_hint === 'string') maskedHint = response.masked_hint;
       } catch (err) {
-        // Real endpoint not reachable yet (404) or any other failure —
-        // same isolated-mock treatment as org-data.js: complete the flow,
-        // but say so honestly. Never surface `err` details that might
-        // echo request content.
-        mock = true;
+        // The backend currently exposes metadata-only credential handles and
+        // intentionally rejects plaintext registration. Never show a fake
+        // connected state when durable secure storage is unavailable.
+        errorEl.hidden = false;
+        errorEl.textContent = 'Diese Verbindung kann in dieser Version noch nicht dauerhaft sicher gespeichert werden.';
+        submitBtn.disabled = false;
+        checkBtn.disabled = false;
+        return;
       }
       // `value` goes out of scope here — never stored anywhere beyond this line.
-      onConnected({ mock, maskedHint });
+      onConnected({ mock: false, maskedHint });
     });
   }
 
@@ -310,7 +312,7 @@
   }
 
   // ---------- Public: renderSecretWarning ----------
-  function renderSecretWarning(onSecure, onDiscard) {
+  function renderSecretWarning(onSecure, onDiscard, onSend) {
     const el = Hufi.el(`
       <div class="cred-warning" role="alert">
         <span class="cred-warning__icon" aria-hidden="true">⚠</span>
@@ -318,6 +320,7 @@
         <span class="spacer"></span>
         <button type="button" class="btn btn--sm btn--primary" data-action="secure">Sicher hinterlegen</button>
         <button type="button" class="btn btn--sm btn--ghost" data-action="discard">Verwerfen</button>
+        <button type="button" class="btn btn--sm btn--ghost" data-action="send">Trotzdem senden</button>
       </div>
     `);
     el.querySelector('[data-action="secure"]').addEventListener('click', () => {
@@ -325,6 +328,9 @@
     });
     el.querySelector('[data-action="discard"]').addEventListener('click', () => {
       if (typeof onDiscard === 'function') onDiscard();
+    });
+    el.querySelector('[data-action="send"]').addEventListener('click', () => {
+      if (typeof onSend === 'function') onSend();
     });
     return el;
   }
