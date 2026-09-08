@@ -359,6 +359,12 @@
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
+    // QA fix: nothing here used to move focus into the dialog, and the
+    // overlay is appended as the last body child, so a keyboard user tabbed
+    // straight through the rest of the page behind it instead of entering
+    // the modal at all (verified via automated Tab-simulation). Move focus
+    // in on open, trap it while open, and restore it to the trigger on close.
+    const previouslyFocused = document.activeElement;
     const swatchRow = card.querySelector('#swatchRow');
     SWATCHES.forEach((color, idx) => {
       const btn = Hufi.el(`<button type="button" class="color-swatch${idx === 0 ? ' is-selected' : ''}" style="background:${color}" aria-label="Farbe wählen"></button>`);
@@ -373,15 +379,33 @@
     function close() {
       overlay.remove();
       document.removeEventListener('keydown', onKeydown);
+      if (previouslyFocused && typeof previouslyFocused.focus === 'function') previouslyFocused.focus();
+    }
+    function focusableElements() {
+      return Array.from(card.querySelectorAll('button, input, textarea, [href]'))
+        .filter((el) => !el.disabled && el.tabIndex !== -1);
     }
     function onKeydown(e) {
-      if (e.key === 'Escape') close();
+      if (e.key === 'Escape') { close(); return; }
+      if (e.key !== 'Tab') return;
+      const focusable = focusableElements();
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     }
     document.addEventListener('keydown', onKeydown);
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) close();
     });
     card.querySelector('#newHufiClose').addEventListener('click', close);
+    card.querySelector('#newHufiName').focus();
 
     card.querySelector('#newHufiForm').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -473,6 +497,7 @@
   Hufi.agents = {
     getAll: () => agentsCache.slice(),
     getById: (id) => agentsCache.find((a) => a.id === id),
+    humanizeId,
     openSystemView,
   };
 
