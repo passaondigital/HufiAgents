@@ -11,14 +11,14 @@ from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from hufiagents import auth
+from hufiagents.api.org import router_for as org_router_for
 from hufiagents.config import Settings
+from hufiagents.contracts import ScopedMemory, Skill, WorkEvidence
+from hufiagents.knowledge import KnowledgeService
 from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
-from hufiagents.contracts import WorkEvidence
 from hufiagents.projects import ProjectRegistry
-from hufiagents.api.org import router_for as org_router_for
-from hufiagents.api.org import router_for as org_router_for
 
 PUBLIC_PATHS = {"/health", "/login"}
 
@@ -30,6 +30,15 @@ class Resolution(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=1, max_length=200)
+
+
+class ContextRequest(BaseModel):
+    intent: str = Field(min_length=1, max_length=16000)
+    scopes: list[tuple[str, str | None]] = []
+    max_memory_items: int = Field(10, ge=0, le=100)
+    max_skill_items: int = Field(5, ge=0, le=100)
+    max_context_chars: int = Field(12000, ge=100, le=100000)
+    max_context_tokens_estimate: int = Field(3000, ge=50, le=25000)
 
 
 def create_app(settings=None, providers=None):
@@ -371,6 +380,46 @@ def create_app(settings=None, providers=None):
         with app.state.store.transaction() as tx:
             return tx.tool_calls.list(task_id=task_id)
 
-    app.include_router(org_router_for(app))
+    @app.get("/skills")
+    async def skills(status: str | None = None, limit: int = Query(100, ge=1, le=500)):
+        with app.state.store.transaction() as tx:
+            return (
+                tx.skills.list(status=status, limit=limit)
+                if status
+                else tx.skills.list(limit=limit)
+            )
+
+    @app.post("/skills", status_code=201)
+    async def create_skill(body: Skill):
+        return KnowledgeService(app.state.store).create_skill(body, actor="pascal")
+
+    @app.get("/memories")
+    async def memories(
+        scope_type: str | None = None,
+        scope_id: str | None = None,
+        limit: int = Query(100, ge=1, le=500),
+    ):
+        with app.state.store.transaction() as tx:
+            filters = {
+                k: v
+                for k, v in {"scope_type": scope_type, "scope_id": scope_id}.items()
+                if v is not None
+            }
+            return tx.scoped_memories.list(limit=limit, **filters)
+
+    @app.post("/memories", status_code=201)
+    async def create_memory(body: ScopedMemory):
+        return KnowledgeService(app.state.store).create_memory(body, actor="pascal")
+
+    @app.post("/context/assemble")
+    async def assemble_context(body: ContextRequest):
+        return KnowledgeService(app.state.store).assemble_context(
+            body.intent,
+            scopes=body.scopes,
+            max_memory_items=body.max_memory_items,
+            max_skill_items=body.max_skill_items,
+            max_context_chars=body.max_context_chars,
+            max_context_tokens_estimate=body.max_context_tokens_estimate,
+        )
 
     return app

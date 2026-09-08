@@ -11,10 +11,13 @@ from hufiagents.contracts import (
     GraphProject,
     GraphRelationship,
     Handoff,
+    LearningRecord,
     MemoryRecord,
     Mission,
     Resource,
     ReviewResult,
+    ScopedMemory,
+    Skill,
     Task,
     Team,
     ToolCall,
@@ -41,6 +44,9 @@ MODELS = {
     "relationships": GraphRelationship,
     "chat_rooms": ChatRoom,
     "credential_refs": CredentialRef,
+    "skills": Skill,
+    "scoped_memories": ScopedMemory,
+    "learning_records": LearningRecord,
 }
 JSON_FIELDS = {
     "constraints",
@@ -57,6 +63,10 @@ JSON_FIELDS = {
     "content",
     "metadata",
     "scopes",
+    "steps",
+    "required_capabilities",
+    "input_schema",
+    "output_schema",
 }
 INTEGER_FIELDS = {"budget_tokens", "budget_seconds", "retry_limit", "retry_count", "exit_code"}
 FK = {

@@ -218,8 +218,11 @@ class Resource(Contract):
 class GraphRelationship(Contract):
     id: str = Field(default_factory=uid)
     relationship_type: Literal[
-        "reports_to", "member_of_team", "works_on_project",
-        "responsible_for_resource", "may_use_resource"
+        "reports_to",
+        "member_of_team",
+        "works_on_project",
+        "responsible_for_resource",
+        "may_use_resource",
     ]
     source_type: str
     source_id: str
@@ -242,6 +245,7 @@ class ChatRoom(Contract):
 
 class CredentialRef(Contract):
     """Metadata-only credential handle; plaintext values never enter this model."""
+
     id: str = Field(default_factory=uid)
     connector: str
     label: str
@@ -250,3 +254,51 @@ class CredentialRef(Contract):
     created_at: datetime = Field(default_factory=now)
     rotated_at: datetime | None = None
     revoked_at: datetime | None = None
+
+
+class Skill(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    version: str = "1.0"
+    scope_type: Literal["global", "agent", "team", "project"] = "global"
+    scope_id: str | None = None
+    owner_agent_id: str | None = None
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+    required_capabilities: list[str] = Field(default_factory=list)
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    output_schema: dict[str, Any] = Field(default_factory=dict)
+    risk_ceiling: Risk = Risk.R1
+    status: Literal["draft", "approved", "archived"] = "draft"
+    source: Literal["system", "manual", "learned"] = "manual"
+    success_count: int = 0
+    failure_count: int = 0
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+    last_used_at: datetime | None = None
+
+
+class ScopedMemory(Contract):
+    id: str = Field(default_factory=uid)
+    scope_type: Literal["user", "global", "agent", "project", "mission", "shared"]
+    scope_id: str | None = None
+    category: str = "general"
+    summary: str
+    content: str
+    importance: float = Field(0.5, ge=0, le=1)
+    confidence: float = Field(0.5, ge=0, le=1)
+    source: str = "manual"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+    last_used_at: datetime | None = None
+
+
+class LearningRecord(Contract):
+    id: str = Field(default_factory=uid)
+    mission_id: str
+    outcome: Literal[
+        "memory_created", "memory_updated", "skill_proposed", "skill_updated", "skipped"
+    ]
+    target_id: str | None = None
+    reason: str = ""
+    created_at: datetime = Field(default_factory=now)

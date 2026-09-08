@@ -38,9 +38,7 @@ def redact(value):
     if isinstance(value, str):
         for pattern in PATTERNS:
             value = pattern.sub(
-                lambda match: (
-                    f"{match.group(1)}[REDACTED]" if match.lastindex else "[REDACTED]"
-                ),
+                lambda match: f"{match.group(1)}[REDACTED]" if match.lastindex else "[REDACTED]",
                 value,
             )
         return value[:16000]
