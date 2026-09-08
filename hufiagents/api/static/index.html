@@ -7,9 +7,32 @@
 <link rel="stylesheet" href="/static/app.css" />
 <link rel="stylesheet" href="/static/agents.css" />
 <link rel="stylesheet" href="/static/chat.css" />
+<link rel="stylesheet" href="/static/org-canvas.css" />
+<link rel="stylesheet" href="/static/cards.css" />
+<link rel="stylesheet" href="/static/work.css" />
+<link rel="stylesheet" href="/static/rooms.css" />
+<link rel="stylesheet" href="/static/credentials.css" />
 </head>
 <body>
-  <div id="root" class="root">
+  <div id="root" class="root" data-active-view="hufi">
+    <nav id="primaryNav" class="primary-nav" aria-label="Hauptnavigation">
+      <button class="primary-nav__item" data-view="hufi" type="button" aria-current="page">
+        <span class="primary-nav__label">Hufi</span>
+      </button>
+      <button class="primary-nav__item" data-view="firma" type="button">
+        <span class="primary-nav__label">Team / Firma</span>
+      </button>
+      <button class="primary-nav__item" data-view="projekte" type="button">
+        <span class="primary-nav__label">Projekte</span>
+      </button>
+      <button class="primary-nav__item" data-view="routinen" type="button">
+        <span class="primary-nav__label">Routinen</span>
+      </button>
+      <button class="primary-nav__item" data-view="arbeit" type="button">
+        <span class="primary-nav__label">Arbeit / Verlauf</span>
+      </button>
+    </nav>
+
     <div id="topbar" class="topbar">
       <button id="sidebarToggle" class="icon-btn" aria-label="Menü öffnen">☰</button>
       <span id="topbarTitle" class="topbar-title">Hufi</span>
@@ -36,8 +59,24 @@
       </aside>
       <div id="sidebarScrim" class="scrim"></div>
 
-      <main id="chat" class="chat">
-        <p class="empty-hint">Lädt …</p>
+      <main id="viewport" class="viewport">
+        <section id="view-hufi" class="view" data-view="hufi">
+          <div id="chat" class="chat">
+            <p class="empty-hint">Lädt …</p>
+          </div>
+        </section>
+        <section id="view-firma" class="view" data-view="firma" hidden>
+          <p class="empty-hint">Lädt …</p>
+        </section>
+        <section id="view-projekte" class="view" data-view="projekte" hidden>
+          <p class="empty-hint">Lädt …</p>
+        </section>
+        <section id="view-routinen" class="view" data-view="routinen" hidden>
+          <p class="empty-hint">Lädt …</p>
+        </section>
+        <section id="view-arbeit" class="view" data-view="arbeit" hidden>
+          <p class="empty-hint">Lädt …</p>
+        </section>
       </main>
 
       <aside id="rightpane" class="rightpane" aria-label="Kontext">
@@ -54,7 +93,14 @@
   </div>
 
 <script src="/static/app.js"></script>
+<script src="/static/nav.js"></script>
+<script src="/static/org-data.js"></script>
 <script src="/static/agents.js"></script>
 <script src="/static/chat.js"></script>
+<script src="/static/org-canvas.js"></script>
+<script src="/static/cards.js"></script>
+<script src="/static/work.js"></script>
+<script src="/static/rooms.js"></script>
+<script src="/static/credentials.js"></script>
 </body>
 </html>
