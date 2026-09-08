@@ -157,6 +157,13 @@
     const name = humanizeId(agent.id);
     const tone = statusTone(agent.status);
     const label = STATUS_LABEL[agent.status] || agent.status;
+    // v1.1.2: a loud pill on every single row read as a technical status
+    // table. Active is now a small, quiet dot (title carries the word for
+    // anyone who needs it); only the non-default "Deaktiviert" state still
+    // gets an explicit label, since silence there would be misleading.
+    const statusMarkup = agent.status === 'active'
+      ? `<span class="status-dot ${tone}" title="${Hufi.esc(label)}"></span>`
+      : `<span class="pill ${tone}">${Hufi.esc(label)}</span>`;
     return `
       <button type="button" class="agent-row" data-id="${Hufi.esc(agent.id)}" data-fade-in>
         ${avatarHtml(agent, 'avatar--sm')}
@@ -164,7 +171,7 @@
           <span class="agent-row-name">${Hufi.esc(name)}</span>
           <span class="agent-row-role muted">${Hufi.esc(friendlyRole(agent.role))}</span>
         </span>
-        <span class="pill ${tone}">${Hufi.esc(label)}</span>
+        ${statusMarkup}
       </button>`;
   }
 

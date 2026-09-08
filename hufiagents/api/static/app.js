@@ -63,7 +63,13 @@
 
   const rightpane = document.getElementById('rightpane');
   const rightpaneScrim = document.getElementById('rightpaneScrim');
+  const shell = document.getElementById('shell');
 
+  // v1.1.2: the right pane is no longer a permanent desktop column (see
+  // app.css) -- it only occupies grid width once it actually has context
+  // to show. #shell carries .rightpane-open so the CSS grid can react;
+  // below 1100px that class is a no-op and the existing slide-in overlay
+  // (.rightpane--open + scrim) still does the work.
   Hufi.rightPane = {
     show(title, renderFn) {
       Hufi.mount.rightpaneTitle.textContent = title;
@@ -71,10 +77,12 @@
       renderFn(Hufi.mount.rightpaneContent);
       rightpane.classList.add('rightpane--open');
       rightpaneScrim.classList.add('scrim--visible');
+      shell.classList.add('rightpane-open');
     },
     hide() {
       rightpane.classList.remove('rightpane--open');
       rightpaneScrim.classList.remove('scrim--visible');
+      shell.classList.remove('rightpane-open');
     },
   };
 
@@ -97,9 +105,13 @@
   Hufi.closeSidebar = closeSidebar;
 
   document.getElementById('rightpaneToggle').onclick = () => {
-    rightpane.classList.contains('rightpane--open') ? Hufi.rightPane.hide() : (
-      rightpane.classList.add('rightpane--open'), rightpaneScrim.classList.add('scrim--visible')
-    );
+    if (rightpane.classList.contains('rightpane--open')) {
+      Hufi.rightPane.hide();
+    } else {
+      rightpane.classList.add('rightpane--open');
+      rightpaneScrim.classList.add('scrim--visible');
+      shell.classList.add('rightpane-open');
+    }
   };
   document.getElementById('rightpaneClose').onclick = () => Hufi.rightPane.hide();
   rightpaneScrim.onclick = () => Hufi.rightPane.hide();

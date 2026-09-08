@@ -51,7 +51,12 @@
   --fast: .15s;
   --normal: .25s;
 
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, system-ui, sans-serif;
+  /* v1.1.2 visual pass: normal UI is sans-serif everywhere. Monospace is
+     reserved for code/logs/IDs/technical details (see .json-dump, code,
+     .audit-timeline__raw pre) -- never for headings, buttons, chat, sidebar
+     or status text. */
+  --font: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "Segoe UI Mono", Consolas, monospace;
 }
 
 * { box-sizing: border-box; }
@@ -69,6 +74,10 @@ a { color: var(--accent-soft); }
 
 .empty-hint { color: var(--text-faint); font-size: .88rem; padding: var(--space-3) 0; }
 
+/* Monospace reserved for code/logs/IDs/technical details -- never for
+   headings, buttons, chat, sidebar or status text (see --font-mono above). */
+code, pre, .json-dump { font-family: var(--font-mono); }
+
 /* ---------- Root / topbar ---------- */
 .root {
   height: 100vh;
@@ -84,7 +93,9 @@ a { color: var(--accent-soft); }
   gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border);
-  background: var(--surface);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   flex-shrink: 0;
 }
 .topbar-title { font-weight: 600; flex: 1; text-align: center; }
@@ -122,7 +133,12 @@ a { color: var(--accent-soft); }
   .shell { display: grid; grid-template-columns: 240px minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); height: 100%; }
 }
 @media (min-width: 1100px) {
-  .shell { grid-template-columns: 280px minmax(0, 1fr) 340px; }
+  /* v1.1.2: the right pane is no longer a permanent, often-empty third
+     column -- it only takes width when it actually has context to show
+     (agent, activity, routine, approval, result). Chat keeps the space
+     otherwise. Hufi.rightPane.show()/hide() (app.js) toggle this class. */
+  .shell { grid-template-columns: 280px minmax(0, 1fr); }
+  .shell.rightpane-open { grid-template-columns: 280px minmax(0, 1fr) 340px; }
 }
 
 /* ---------- Sidebar ---------- */
@@ -153,25 +169,33 @@ a { color: var(--accent-soft); }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-4);
+  padding: var(--space-5) var(--space-4) var(--space-4);
   gap: var(--space-2);
 }
-.brand { font-weight: 700; font-size: 1.05rem; letter-spacing: -.01em; }
-.sidebar-search { padding: 0 var(--space-4) var(--space-3); }
+.brand { font-weight: 700; font-size: 1.1rem; letter-spacing: -.01em; }
+.sidebar-search { padding: 0 var(--space-4) var(--space-4); }
 .sidebar-search input {
   width: 100%;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  padding: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-4);
   color: var(--text);
 }
-.sidebar-list { flex: 1; overflow-y: auto; padding: 0 var(--space-2) var(--space-3); }
+.sidebar-section-label {
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: .74rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-faint);
+}
+.sidebar-list { flex: 1; overflow-y: auto; padding: 0 var(--space-3) var(--space-4); }
 .sidebar-footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-4);
   border-top: 1px solid var(--border-soft);
 }
 .conn-status { font-size: .78rem; color: var(--text-faint); }
@@ -202,7 +226,18 @@ a { color: var(--accent-soft); }
 }
 .rightpane.rightpane--open { transform: translateX(0); }
 @media (min-width: 1100px) {
-  .rightpane { position: static; transform: none !important; width: auto; max-width: none; height: 100%; min-height: 0; }
+  /* Not permanently rendered any more -- only laid out once #shell carries
+     .rightpane-open (see the grid rule above), set by Hufi.rightPane.show(). */
+  .rightpane { display: none; }
+  .shell.rightpane-open .rightpane {
+    display: flex;
+    position: static;
+    transform: none !important;
+    width: auto;
+    max-width: none;
+    height: 100%;
+    min-height: 0;
+  }
 }
 .rightpane-header {
   display: flex;
@@ -212,8 +247,8 @@ a { color: var(--accent-soft); }
   border-bottom: 1px solid var(--border-soft);
   font-weight: 600;
 }
-#rightpaneClose { }
-@media (min-width: 1100px) { #rightpaneClose { display: none; } }
+/* Always available now -- the pane is closable at every width, not just
+   below 1100px, since it's no longer a permanent desktop column. */
 .rightpane-content { flex: 1; overflow-y: auto; padding: var(--space-4); }
 
 /* ---------- Scrims (mobile/tablet overlay backdrops) ---------- */
@@ -249,7 +284,10 @@ a { color: var(--accent-soft); }
 .btn--sm { padding: var(--space-1) var(--space-3); font-size: .82rem; }
 .btn--ghost { background: none; }
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.btn--primary:hover { background: #3f6bec; }
+/* v1.1.2 fix: this was a leftover #3f6bec (blue) from before the warm
+   rebrand, invisible until hover -- real, visible blue on every primary
+   button. */
+.btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 .btn--danger { border-color: var(--bad); color: var(--bad); background: none; }
 .btn--danger:hover { background: var(--bad-bg); }
 .btn:disabled { opacity: .5; cursor: default; pointer-events: none; }
@@ -268,6 +306,20 @@ a { color: var(--accent-soft); }
 .pill.tone-bad { background: var(--bad-bg); color: var(--bad); }
 .pill.tone-idle { background: var(--idle-bg); color: var(--idle); }
 .pill.tone-accent { background: var(--accent-bg); color: var(--accent-soft); }
+
+/* Quieter than a pill -- a status signal that doesn't compete for
+   attention next to every single list row (sidebar agent rows). */
+.status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.status-dot.tone-ok { background: var(--ok); }
+.status-dot.tone-warn { background: var(--warn); }
+.status-dot.tone-bad { background: var(--bad); }
+.status-dot.tone-idle { background: var(--idle); }
 
 .card {
   background: var(--surface-2);

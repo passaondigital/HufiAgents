@@ -190,7 +190,7 @@
           <div class="chat-empty" id="chatEmpty">
             <div class="chat-empty__avatar avatar avatar--lg">H</div>
             <h1 class="chat-empty__title">Was soll ich für dich erledigen?</h1>
-            <p class="chat-empty__sub muted">Ich bin Hufi. Sag mir dein Ziel — ich hole mir das passende Team und melde mich mit dem Ergebnis.</p>
+            <p class="chat-empty__sub muted">Sag mir dein Ziel. Ich kümmere mich um den Rest.</p>
             <div class="chat-chips" id="chatChips"></div>
           </div>
           <div class="chat-msglist" id="chatMsgList" hidden></div>
@@ -427,19 +427,38 @@
     }).join('') + '</ul>';
   }
 
+  // Honest, state-driven 3-line checklist (never mission-specific invented
+  // steps, no UUIDs/status codes) for the normal in-progress path. Stage 1
+  // is "done" the moment we're tracking a mission at all (it already
+  // exists); stage 2/3 reflect the real, current mission.status.
+  function progressChecklistHtml(taskCount, status) {
+    const workLabel = taskCount > 1 ? `${taskCount} Agenten arbeiten daran` : 'Hufi arbeitet daran';
+    const stage2 = status === 'review' ? 'done' : 'current';
+    const stage3 = status === 'review' ? 'current' : 'pending';
+    const mark = { done: '✓', current: '●', pending: '○' };
+    const steps = [
+      { label: 'Auftrag angenommen', state: 'done' },
+      { label: workLabel, state: stage2 },
+      { label: 'Ergebnis wird geprüft', state: stage3 },
+    ];
+    return '<div class="progress-checklist" data-fade-in>' + steps.map((s) => `
+      <div class="progress-step progress-step--${s.state}"><span class="progress-step__mark">${mark[s.state]}</span><span>${esc(s.label)}</span></div>
+    `).join('') + '</div>';
+  }
+
   // ---------- Mission polling ----------
   function trackMission(missionId, turnEl) {
     const progressEl = turnEl.querySelector('.progress-lines');
     const approvalSlot = turnEl.querySelector('.approval-slot');
     const resultSlot = turnEl.querySelector('.result-slot');
-    let lastLine = null;
+    let lastHtml = null;
     let timer = null;
     let stopped = false;
 
-    function setLine(text) {
-      if (text === lastLine) return;
-      lastLine = text;
-      progressEl.innerHTML = text ? `<div class="progress-line" data-fade-in>${esc(text)}</div>` : '';
+    function setProgress(html) {
+      if (html === lastHtml) return;
+      lastHtml = html;
+      progressEl.innerHTML = html;
     }
 
     async function tick() {
@@ -454,16 +473,18 @@
       if (stopped) return;
 
       if (mission.status === 'waiting_approval') {
-        setLine(statusLine(mission, tasks.length));
+        setProgress(`<div class="progress-line" data-fade-in>${esc(statusLine(mission, tasks.length))}</div>`);
         await ensureApprovalCard(missionId, tasks, approvalSlot, turnEl);
-      } else {
-        setLine(statusLine(mission, tasks.length));
+      } else if (['blocked', 'retrying'].includes(mission.status)) {
+        setProgress(`<div class="progress-line" data-fade-in>${esc(statusLine(mission, tasks.length))}</div>`);
+      } else if (!TERMINAL_STATUSES.includes(mission.status)) {
+        setProgress(progressChecklistHtml(tasks.length, mission.status));
       }
 
       if (TERMINAL_STATUSES.includes(mission.status)) {
         stopped = true;
         if (timer) clearInterval(timer);
-        setLine('');
+        setProgress('');
         renderResult(resultSlot, mission);
         scrollToBottom();
       }
@@ -560,6 +581,7 @@
     const isFailed = mission.status === 'failed';
     const isCancelled = mission.status === 'cancelled';
     const title = isFailed ? 'Nicht geschafft' : isCancelled ? 'Abgebrochen' : 'Fertig';
+    const mark = isFailed ? '✕' : isCancelled ? '○' : '✓';
     const tone = isFailed ? 'bad' : isCancelled ? 'idle' : 'ok';
     const raw = (mission.result || '').trim();
     const fallback = isFailed
@@ -575,10 +597,11 @@
     const card = Hufi.el(`
       <div class="card result-card" data-fade-in>
         <div class="row result-card__head">
-          <span class="pill tone-${tone}">${esc(title)}</span>
+          <span class="pill tone-${tone}">${mark} ${esc(title)}</span>
         </div>
         <div class="result-card__text"></div>
         <div class="row result-card__actions">
+          <button type="button" class="btn btn--sm btn--primary result-continue">Weiterarbeiten</button>
           ${isLong ? '<button type="button" class="btn btn--sm btn--ghost result-expand">Bericht öffnen</button>' : ''}
           <button type="button" class="btn btn--sm btn--ghost result-dismiss">Später</button>
         </div>
@@ -586,6 +609,13 @@
     `);
     const textEl = card.querySelector('.result-card__text');
     renderMarkdown(textEl, short);
+
+    // "Weiterarbeiten": the natural next action after a result is to keep
+    // talking to Hufi about it -- jumps straight to the composer.
+    card.querySelector('.result-continue').addEventListener('click', () => {
+      inputEl.focus();
+      inputEl.scrollIntoView({ block: 'nearest' });
+    });
 
     const expandBtn = card.querySelector('.result-expand');
     if (expandBtn) {
