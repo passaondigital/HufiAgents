@@ -216,12 +216,22 @@
     `));
 
     const body = Hufi.el(`<div class="stack cred-connected"></div>`);
-    body.appendChild(Hufi.el(`<p class="cred-connected__status">✓ ${esc(label || connector)} verbunden</p>`));
+    // TRUTHFULNESS (v1.2 product acceptance review, section 9): even on the
+    // real, non-mock success path, POST /credentials only ever creates a
+    // metadata handle (CredentialRef has no secret field at all -- see
+    // hufiagents/contracts.py) -- the actual secret is never stored, so
+    // Hufi cannot yet use this connection for anything. "✓ verbunden"
+    // (unconditionally, real or mock) claimed a working, usable connection
+    // that doesn't exist yet. Never say "sicher gespeichert" here.
+    if (info.mock) {
+      body.appendChild(Hufi.el(`<p class="cred-connected__status">${esc(label || connector)}: Verbindung vorbereitet</p>`));
+      body.appendChild(Hufi.el(`<p class="cred-mocknote">Nur lokale Vorschau — Backend noch nicht verbunden.</p>`));
+    } else {
+      body.appendChild(Hufi.el(`<p class="cred-connected__status">${esc(label || connector)}: Verbindung vorbereitet</p>`));
+      body.appendChild(Hufi.el(`<p class="faint">Zugang wird in dieser Version noch nicht dauerhaft gespeichert. Hufi kann diese Verbindung noch nicht für Aufgaben nutzen.</p>`));
+    }
     if (info.maskedHint) {
       body.appendChild(Hufi.el(`<p class="faint">${esc(info.maskedHint)}</p>`));
-    }
-    if (info.mock) {
-      body.appendChild(Hufi.el(`<p class="cred-mocknote">Nur lokale Vorschau — Backend noch nicht verbunden.</p>`));
     }
     const actions = Hufi.el(`
       <div class="row cred-connected__actions">

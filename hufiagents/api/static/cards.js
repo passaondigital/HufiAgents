@@ -190,7 +190,7 @@
           }
         } catch (e) {
           workList.hidden = false;
-          workList.innerHTML = `<p class="empty-hint">Arbeit konnte nicht geladen werden: ${esc(e.message)}</p>`;
+          workList.innerHTML = `<p class="empty-hint">Arbeit konnte nicht geladen werden: ${esc(Hufi.errors.translate(e.message))}</p>`;
         } finally {
           workBtn.disabled = false;
           workBtn.textContent = 'Arbeit ansehen';
@@ -558,7 +558,7 @@
         onCreated();
       } catch (err) {
         msg.hidden = false;
-        msg.textContent = `Projekt konnte nicht angelegt werden: ${err.message}`;
+        msg.textContent = `Projekt konnte nicht angelegt werden: ${Hufi.errors.translate(err.message)}`;
       }
     });
   }
@@ -780,7 +780,7 @@
         close();
         onCreated();
       } catch (err) {
-        errBox.textContent = `Routine konnte nicht erstellt werden: ${err.message}`;
+        errBox.textContent = `Routine konnte nicht erstellt werden: ${Hufi.errors.translate(err.message)}`;
       }
     });
     if (agents.length) card.querySelector('#routineTaskR').focus();
@@ -811,7 +811,7 @@
             const routines = await Hufi.api('/routines');
             renderList(routines);
           } catch (e) {
-            listBox.innerHTML = `<p class="empty-hint">Routinen konnten nicht geladen werden: ${esc(e.message)}</p>`;
+            listBox.innerHTML = `<p class="empty-hint">Routinen konnten nicht geladen werden: ${esc(Hufi.errors.translate(e.message))}</p>`;
           }
         }
 
