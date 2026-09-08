@@ -229,6 +229,11 @@ class Store:
                     connection
                 )
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (4)")
+            if 5 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.005_skills_memory"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (5)")
 
     @contextmanager
     def transaction(self):
