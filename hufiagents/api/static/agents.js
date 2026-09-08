@@ -112,7 +112,8 @@
   }
 
   function avatarColor(id) {
-    return `hsl(${hashHue(id)}, 58%, 42%)`;
+    const palette = ['#f47f1f', '#c14f15', '#f59f0a', '#c96a48', '#d65d42', '#8f3e2b', '#5d514b'];
+    return palette[hashHue(id) % palette.length];
   }
 
   function initials(name) {
@@ -357,7 +358,7 @@
 
   // ---------- "+ Neuer Hufi" flow ----------
 
-  const SWATCHES = [0, 30, 200, 260, 140, 340].map((h) => `hsl(${h}, 58%, 42%)`);
+  const SWATCHES = ['#f47f1f', '#c14f15', '#f59f0a', '#c96a48', '#d65d42', '#8f3e2b'];
 
   function openNewHufiModal() {
     const overlay = Hufi.el(`<div class="modal-overlay" data-fade-in></div>`);

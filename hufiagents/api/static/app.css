@@ -18,14 +18,15 @@
   --text-muted: #8b93a3;
   --text-faint: #7a86a0; /* QA fix: #5b6578 measured 2.9-3.3:1 against surfaces in use, below WCAG AA (4.5:1) for normal text */
 
-  --accent: #4f7dfb;
-  --accent-soft: #8fb0ff;
-  --accent-bg: rgba(79, 125, 251, .14);
+  --accent: #f47f1f;
+  --accent-soft: #ffad63;
+  --accent-bg: rgba(244, 127, 31, .14);
+  --accent-hover: #c14f15;
 
-  --ok: #35d68f;
-  --ok-bg: rgba(53, 214, 143, .14);
-  --warn: #f5b84f;
-  --warn-bg: rgba(245, 184, 79, .14);
+  --ok: #f47f1f;
+  --ok-bg: rgba(244, 127, 31, .14);
+  --warn: #f59f0a;
+  --warn-bg: rgba(245, 159, 10, .14);
   --bad: #f26d6d;
   --bad-bg: rgba(242, 109, 109, .14);
   --idle: #7c8699; /* QA fix: #6b7484 measured 3.8:1 for small pill text, below WCAG AA */
