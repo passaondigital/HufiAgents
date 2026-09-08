@@ -1,0 +1,144 @@
+/* ==========================================================================
+   Hufi — reusable card components + "Projekte" / "Routinen" view styles.
+   Builds on tokens defined in app.css; does not redefine shell layout.
+   Only warm orange/red/neutral tones (matches app.css) -- no blue/green/cyan.
+   ========================================================================== */
+
+/* ---------- View shell (Projekte / Routinen) ---------- */
+.cards-view {
+  padding: var(--space-5) var(--space-4) var(--space-6);
+  overflow-y: auto;
+  height: 100%;
+}
+.cards-view__section + .cards-view__section { margin-top: var(--space-6); }
+.cards-view__header { gap: var(--space-3); margin-bottom: var(--space-4); flex-wrap: wrap; }
+.cards-view__header h2 { margin: 0; font-size: 1.05rem; }
+
+.mock-notice {
+  display: inline-block;
+  margin: 0 0 var(--space-4);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+/* ---------- Grids (reflow 1920px -> 360px, no horizontal overflow) ---------- */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--space-4);
+}
+.cards-grid--resources { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+@media (max-width: 480px) {
+  .cards-grid, .cards-grid--resources { grid-template-columns: 1fr; }
+}
+
+/* ---------- Shared card body pieces (agent/team/project cards) ---------- */
+.hufi-card { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
+.hufi-card__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  background: none;
+  border: none;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+}
+.hufi-card__row--clickable { cursor: pointer; border-radius: var(--radius-sm); }
+.hufi-card__row--clickable:hover { background: var(--surface-raised); }
+.hufi-card__row--clickable:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.hufi-card__main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.hufi-card__title { font-weight: 600; font-size: .96rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hufi-card__subtitle { font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hufi-card__desc { font-size: .86rem; margin: 0; }
+
+.hufi-card__detail { display: flex; flex-direction: column; gap: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--border-soft); }
+.hufi-card__detail[hidden] { display: none; }
+.hufi-card__facts { display: flex; flex-direction: column; gap: var(--space-2); }
+.hufi-card__fact { display: flex; flex-direction: column; gap: 2px; font-size: .86rem; }
+.hufi-card__fact > .muted { font-size: .74rem; text-transform: uppercase; letter-spacing: .04em; }
+.hufi-card__activity { font-size: .86rem; }
+.hufi-card__actions { flex-wrap: wrap; gap: var(--space-2); }
+.hufi-card__work-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-2); font-size: .84rem; }
+.hufi-card__work-list li { border-bottom: 1px dashed var(--border-soft); padding-bottom: var(--space-2); }
+.hufi-card__work-list li:last-child { border-bottom: none; padding-bottom: 0; }
+.hufi-card__raw summary { cursor: pointer; color: var(--accent-soft); font-size: .85rem; font-weight: 500; }
+.hufi-card__raw summary::marker { color: var(--text-faint); }
+
+.hufi-card__avatars { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.hufi-card__avatars .avatar--sm { cursor: default; }
+
+/* ---------- Resource tiles ---------- */
+.resource-tile { display: flex; flex-direction: column; gap: var(--space-3); }
+.resource-tile__header { display: flex; align-items: center; gap: var(--space-2); }
+.resource-tile__name { font-weight: 600; font-size: .94rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.resource-tile__badges { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.resource-tile__actions { gap: var(--space-2); }
+
+/* ---------- Resource controls (search/filter/sort) ---------- */
+.resource-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.resource-controls input[type="search"] {
+  flex: 1;
+  min-width: 180px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+}
+.resource-controls select {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-3);
+  color: var(--text);
+}
+
+/* ---------- Routinen view ---------- */
+.routine-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "main status" "actions actions";
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.routine-row__main { grid-area: main; min-width: 0; }
+.routine-row__outcome { font-weight: 600; font-size: .92rem; }
+.routine-row__meta { font-size: .82rem; margin-top: 2px; }
+.routine-row__status { grid-area: status; }
+.routine-row__actions { grid-area: actions; justify-content: flex-end; gap: var(--space-2); }
+.routine-archived-toggle { align-items: center; gap: var(--space-2); font-size: .84rem; cursor: pointer; }
+.routine-archived-toggle input { cursor: pointer; }
+.routine-choice { display: flex; gap: var(--space-2); }
+.routine-choice button {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-3);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: .84rem;
+}
+.routine-choice button.is-selected { background: var(--accent-bg); color: var(--accent-soft); border-color: var(--accent); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 600px) {
+  .cards-view { padding: var(--space-4) var(--space-3) var(--space-5); }
+  .routine-row { grid-template-areas: "main main" "status actions"; }
+  .routine-row__status { justify-self: start; }
+}
+@media (max-width: 389px) {
+  .cards-view__header { flex-direction: column; align-items: stretch; }
+  .cards-view__header h2 { text-align: left; }
+}

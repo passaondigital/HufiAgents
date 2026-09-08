@@ -242,6 +242,21 @@
   function handleSend() {
     const text = inputEl.value.trim();
     if (!text) return;
+    const detector = Hufi.credentials && Hufi.credentials.interceptChatInput;
+    if (typeof detector === 'function' && detector(text).looksLikeSecret) {
+      let warning;
+      warning = Hufi.credentials.renderSecretWarning(
+        () => Hufi.credentials.openConnectModal?.({ connector: 'generic', label: 'Chat-Zugangsschlüssel' }),
+        () => { inputEl.value = ''; inputEl.style.height = 'auto'; warning.remove(); },
+        () => { warning.remove(); sendText(text); },
+      );
+      inputEl.parentElement.appendChild(warning);
+      return;
+    }
+    sendText(text);
+  }
+
+  function sendText(text) {
     const routine = detectRoutineIntent(text);
     if (routine && routine.type === 'clear') {
       inputEl.value = '';
@@ -327,7 +342,7 @@
       } catch (error) {
         actionsEl.querySelectorAll('button').forEach((b) => { b.disabled = false; });
         statusEl.hidden = false;
-        statusEl.textContent = 'Die Routine konnte nicht eingerichtet werden: ' + error.message;
+        statusEl.textContent = 'Die Routine konnte nicht eingerichtet werden: ' + Hufi.errors.translate(error.message);
       }
     });
 
@@ -384,7 +399,7 @@
       });
     } catch (error) {
       const hufiBubble = turnEl.querySelector('.bubble--hufi');
-      hufiBubble.textContent = 'Das hat leider nicht geklappt: ' + error.message;
+      hufiBubble.textContent = 'Das hat leider nicht geklappt: ' + Hufi.errors.translate(error.message);
       return;
     }
 
@@ -567,7 +582,7 @@
         statusEl.className = 'approval-card__status ' + (action === 'approve' ? 'muted' : 'muted');
       } catch (error) {
         statusEl.hidden = false;
-        statusEl.textContent = 'Fehlgeschlagen: ' + error.message;
+        statusEl.textContent = 'Fehlgeschlagen: ' + Hufi.errors.translate(error.message);
         approveBtn.disabled = false;
         denyBtn.disabled = false;
       }

@@ -12,8 +12,10 @@ from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from hufiagents import auth
+from hufiagents.api.org import router_for as org_router_for
 from hufiagents.config import Settings
-from hufiagents.contracts import Agent, AgentMessage, Routine
+from hufiagents.contracts import Agent, AgentMessage, Routine, ScopedMemory, Skill, WorkEvidence
+from hufiagents.knowledge import KnowledgeService
 from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
@@ -31,6 +33,15 @@ class Resolution(BaseModel):
 class LoginRequest(BaseModel):
     username: str = Field(min_length=1, max_length=200)
     password: str = Field(min_length=1, max_length=200)
+
+
+class ContextRequest(BaseModel):
+    intent: str = Field(min_length=1, max_length=16000)
+    scopes: list[tuple[str, str | None]] = []
+    max_memory_items: int = Field(10, ge=0, le=100)
+    max_skill_items: int = Field(5, ge=0, le=100)
+    max_context_chars: int = Field(12000, ge=100, le=100000)
+    max_context_tokens_estimate: int = Field(3000, ge=50, le=25000)
 
 
 class AgentCreate(BaseModel):
@@ -130,6 +141,7 @@ def create_app(settings=None, providers=None):
                 lock.close()
 
     app = FastAPI(title="HufiAgents Core V1", lifespan=lifespan)
+    app.include_router(org_router_for(app))
     allowed_hosts = ["127.0.0.1", "localhost", "testserver"]
     if settings.public_hostname:
         allowed_hosts.append(settings.public_hostname)
@@ -467,6 +479,58 @@ def create_app(settings=None, providers=None):
         with app.state.store.transaction() as tx:
             return tx.audit.list(mission_id=mission_id, limit=limit, offset=offset)
 
+    @app.post("/work-evidence", status_code=201)
+    async def create_work_evidence(body: WorkEvidence):
+        """Persist sanitized, typed proof of work and its audit marker."""
+        with app.state.store.transaction() as tx:
+            if body.mission_id:
+                tx.missions.get(body.mission_id)
+            if body.task_id:
+                task = tx.tasks.get(body.task_id)
+                if body.mission_id and task.mission_id != body.mission_id:
+                    raise ValueError("task does not belong to mission")
+            evidence = tx.work_evidence.add(body)
+            tx.log(
+                "work_evidence_created",
+                mission_id=evidence.mission_id,
+                task_id=evidence.task_id,
+                evidence_id=evidence.id,
+                source_type=evidence.source_type,
+                evidence_type=evidence.evidence_type,
+            )
+            tx.log(
+                "work_evidence_redacted",
+                mission_id=evidence.mission_id,
+                task_id=evidence.task_id,
+                evidence_id=evidence.id,
+            )
+            return evidence
+
+    @app.get("/work-evidence")
+    async def work_evidence(
+        mission_id: str | None = None,
+        task_id: str | None = None,
+        source_type: str | None = None,
+        limit: int = Query(100, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+    ):
+        filters = {
+            key: value
+            for key, value in {
+                "mission_id": mission_id,
+                "task_id": task_id,
+                "source_type": source_type,
+            }.items()
+            if value is not None
+        }
+        with app.state.store.transaction() as tx:
+            return tx.work_evidence.list(limit=limit, offset=offset, **filters)
+
+    @app.get("/work-evidence/{identifier}")
+    async def work_evidence_item(identifier: str):
+        with app.state.store.transaction() as tx:
+            return tx.work_evidence.get(identifier)
+
     @app.get("/reviews")
     async def reviews(task_id: str):
         with app.state.store.transaction() as tx:
@@ -476,5 +540,87 @@ def create_app(settings=None, providers=None):
     async def tool_calls(task_id: str):
         with app.state.store.transaction() as tx:
             return tx.tool_calls.list(task_id=task_id)
+
+    @app.get("/skills")
+    async def skills(status: str | None = None, limit: int = Query(100, ge=1, le=500)):
+        with app.state.store.transaction() as tx:
+            return (
+                tx.skills.list(status=status, limit=limit)
+                if status
+                else tx.skills.list(limit=limit)
+            )
+
+    @app.post("/skills", status_code=201)
+    async def create_skill(body: Skill):
+        return KnowledgeService(app.state.store).create_skill(body, actor="pascal")
+
+    @app.get("/memories")
+    async def memories(
+        scope_type: str | None = None,
+        scope_id: str | None = None,
+        limit: int = Query(100, ge=1, le=500),
+    ):
+        with app.state.store.transaction() as tx:
+            filters = {
+                k: v
+                for k, v in {"scope_type": scope_type, "scope_id": scope_id}.items()
+                if v is not None
+            }
+            return tx.scoped_memories.list(limit=limit, **filters)
+
+    @app.post("/memories", status_code=201)
+    async def create_memory(body: ScopedMemory):
+        return KnowledgeService(app.state.store).create_memory(body, actor="pascal")
+
+    @app.post("/context/assemble")
+    async def assemble_context(body: ContextRequest):
+        return KnowledgeService(app.state.store).assemble_context(
+            body.intent,
+            scopes=body.scopes,
+            max_memory_items=body.max_memory_items,
+            max_skill_items=body.max_skill_items,
+            max_context_chars=body.max_context_chars,
+            max_context_tokens_estimate=body.max_context_tokens_estimate,
+        )
+
+    @app.get("/work-summary")
+    async def work_summary(
+        project_id: str | None = None,
+        team_id: str | None = None,
+        agent_id: str | None = None,
+        limit: int = Query(100, ge=1, le=1000),
+    ):
+        """Bounded summary assembled only from persisted records; no ROI estimates."""
+        with app.state.store.transaction() as tx:
+            tasks = tx.tasks.list(limit=limit)
+            if project_id:
+                tasks = [task for task in tasks if task.project_id == project_id]
+            if agent_id:
+                tasks = [task for task in tasks if task.assigned_agent_id == agent_id]
+            mission_ids = {task.mission_id for task in tasks}
+            evidence = tx.work_evidence.list(limit=limit)
+            evidence = [item for item in evidence if item.mission_id in mission_ids]
+            reviews = tx.reviews.list(limit=limit)
+            task_ids = {task.id for task in tasks}
+            reviews = [review for review in reviews if review.task_id in task_ids]
+            return {
+                "completed_tasks": [task for task in tasks if str(task.status) == "completed"],
+                "active_or_blocking_tasks": [
+                    task
+                    for task in tasks
+                    if str(task.status) in {"running", "blocked", "waiting_approval"}
+                ],
+                "generated_artifacts": [
+                    artifact
+                    for task in tasks
+                    for artifact in (task.result or "").splitlines()
+                    if artifact
+                ],
+                "work_evidence_count": len(evidence),
+                "reviews": reviews,
+                "affected_projects": sorted({task.project_id for task in tasks if task.project_id}),
+                "team_filter": team_id,
+                "source": "persisted_records",
+            }
 
     return app

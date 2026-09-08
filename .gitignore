@@ -47,3 +47,4 @@ artifacts/
 # Local model/runtime data
 ollama-data/
 models/
+.venv-qa/

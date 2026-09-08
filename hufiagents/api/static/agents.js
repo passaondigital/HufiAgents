@@ -219,7 +219,7 @@
     } catch (e) {
       Hufi.mount.sidebarList.innerHTML = '';
       Hufi.mount.sidebarList.appendChild(
-        Hufi.el(`<p class="empty-hint">Hufis konnten nicht geladen werden: ${Hufi.esc(e.message)}</p>`)
+        Hufi.el(`<p class="empty-hint">Hufis konnten nicht geladen werden: ${Hufi.esc(Hufi.errors.translate(e.message))}</p>`)
       );
     }
   }
@@ -315,7 +315,7 @@
         await Hufi.api(`/routines/${encodeURIComponent(button.dataset.routine)}/${action}`, {method: 'POST'});
         loadRoutines(container, agentId);
       }));
-    } catch (e) { target.innerHTML = `<p class="empty-hint">Routinen konnten nicht geladen werden: ${Hufi.esc(e.message)}</p>`; }
+    } catch (e) { target.innerHTML = `<p class="empty-hint">Routinen konnten nicht geladen werden: ${Hufi.esc(Hufi.errors.translate(e.message))}</p>`; }
   }
 
   function openRoutineModal(agentId, done) {
@@ -362,7 +362,7 @@
       const outcome = overlay.querySelector('#routineTask').value.trim(); const time = overlay.querySelector('#routineTime').value;
       if (!outcome || !time) { overlay.querySelector('#routineError').textContent = 'Bitte Aufgabe und Zeit auswählen.'; return; }
       const schedule = kind === 'day' ? `every day at ${time}` : `every ${overlay.querySelector('#routineDay').value} at ${time}`;
-      try { await Hufi.api('/routines', {method: 'POST', body: JSON.stringify({owner_agent_id: agentId, mission_template: {outcome, risk_ceiling: 'R0'}, schedule, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'})}); close(); done(); } catch (error) { overlay.querySelector('#routineError').textContent = `Routine konnte nicht erstellt werden: ${error.message}`; }
+      try { await Hufi.api('/routines', {method: 'POST', body: JSON.stringify({owner_agent_id: agentId, mission_template: {outcome, risk_ceiling: 'R0'}, schedule, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Berlin'})}); close(); done(); } catch (error) { overlay.querySelector('#routineError').textContent = `Routine konnte nicht erstellt werden: ${Hufi.errors.translate(error.message)}`; }
     };
     overlay.querySelector('#routineTask').focus();
   }
@@ -493,7 +493,7 @@
         close();
       } catch (err) {
         msg.hidden = false;
-        msg.textContent = `Hufi konnte nicht angelegt werden: ${err.message}`;
+        msg.textContent = `Hufi konnte nicht angelegt werden: ${Hufi.errors.translate(err.message)}`;
       }
     });
   }
@@ -548,17 +548,17 @@
     };
 
     Hufi.api('/agents').then((data) => setBox('#sysAgents', jsonDump(data)))
-      .catch((e) => setBox('#sysAgents', `<p class="empty-hint">Fehler: ${Hufi.esc(e.message)}</p>`));
+      .catch((e) => setBox('#sysAgents', `<p class="empty-hint">Fehler: ${Hufi.esc(Hufi.errors.translate(e.message))}</p>`));
 
     Hufi.api('/models').then((data) => setBox('#sysModels', jsonDump(data)))
-      .catch((e) => setBox('#sysModels', `<p class="empty-hint">Fehler: ${Hufi.esc(e.message)}</p>`));
+      .catch((e) => setBox('#sysModels', `<p class="empty-hint">Fehler: ${Hufi.esc(Hufi.errors.translate(e.message))}</p>`));
 
     Hufi.api('/projects').then((data) => setBox('#sysProjects', jsonDump(data)))
-      .catch((e) => setBox('#sysProjects', `<p class="empty-hint">Fehler: ${Hufi.esc(e.message)}</p>`));
+      .catch((e) => setBox('#sysProjects', `<p class="empty-hint">Fehler: ${Hufi.esc(Hufi.errors.translate(e.message))}</p>`));
 
     fetchAggregatedAudit({ missionsLimit: 20, perMissionLimit: 20 })
       .then((data) => setBox('#sysAudit', jsonDump(data.slice(0, 100))))
-      .catch((e) => setBox('#sysAudit', `<p class="empty-hint">Fehler: ${Hufi.esc(e.message)}</p>`));
+      .catch((e) => setBox('#sysAudit', `<p class="empty-hint">Fehler: ${Hufi.esc(Hufi.errors.translate(e.message))}</p>`));
   }
 
   function openSystemView() {
