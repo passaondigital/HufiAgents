@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 import httpx
 from fastapi import FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
@@ -116,6 +117,11 @@ def create_app(settings=None, providers=None):
     if settings.public_hostname:
         allowed_hosts.append(settings.public_hostname)
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts)
+    app.mount(
+        "/static",
+        StaticFiles(directory=Path(__file__).with_name("static")),
+        name="static",
+    )
 
     @app.middleware("http")
     async def request_boundary(request: Request, call_next):
@@ -221,6 +227,12 @@ def create_app(settings=None, providers=None):
 
     @app.get("/", response_class=HTMLResponse)
     async def status():
+        return Path(__file__).with_name("static").joinpath("index.html").read_text()
+
+    @app.get("/legacy", response_class=HTMLResponse)
+    async def legacy_status():
+        # V1.0.1 admin-dashboard UI, kept reachable for expert/system fallback
+        # during the V1.1 product-experience rollout (docs/HUFIAGENTS-PRODUCT-VISION.md).
         return Path(__file__).with_name("status.html").read_text()
 
     @app.post("/missions", status_code=202)
