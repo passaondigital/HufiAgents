@@ -136,7 +136,7 @@
   font-size: .78rem;
   cursor: pointer;
   padding: var(--space-1) var(--space-2);
-  min-height: 32px;
+  min-height: 40px; /* QA fix: 32px was below the ~40px touch-target minimum */
 }
 .details-toggle:hover { color: var(--accent-soft); }
 .details-panel {
@@ -204,7 +204,7 @@
   padding: var(--space-1) var(--space-3);
   font-size: .78rem;
   cursor: pointer;
-  min-height: 32px;
+  min-height: 40px; /* QA fix: 32px was below the ~40px touch-target minimum */
 }
 .result-mini:hover { color: var(--accent-soft); border-color: var(--accent); }
 
