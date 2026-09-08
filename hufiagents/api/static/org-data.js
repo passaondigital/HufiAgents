@@ -1,0 +1,235 @@
+/* ==========================================================================
+   Hufi — shared org-graph data adapter (v1.2 "digital company").
+
+   Single source of truth for teams / projects / resources / relationships /
+   chat rooms, consumed by nav.js's views (firma/projekte/routinen/arbeit),
+   org-canvas.js, cards.js, work.js and rooms.js. Building this once here
+   (instead of once per feature module) keeps every view showing the exact
+   same graph and the exact same mock/real state.
+
+   BACKEND STATUS (verified 2026-09-08): the real endpoints this module
+   wants -- GET/POST /org, /teams, /graph-projects, /resources,
+   /relationships, /rooms, /credentials, /work-evidence -- exist as real,
+   working code (hufiagents/api/org.py + org_graph.py) but on Codex's
+   unmerged codex/v1-2-core-capabilities branch, not yet on main. /agents
+   IS real on main today and is never mocked.
+
+   So: agents always come from the real API. Everything else tries the
+   real API first and falls back to a CLEARLY LABELED, isolated mock
+   dataset (see MOCK_* below and `_mock: true` on every mock object) built
+   using the real fetched agents so the graph stays internally consistent.
+   Every UI that reads isMock()===true MUST show a visible "Beispieldaten"
+   notice -- never render mock content as if it were real company data.
+   Swap-over plan once the backend branch merges: nothing in the UI layer
+   needs to change, only the fallback path stops triggering (delete
+   buildMockSnapshot + the try/catch fallback once /org is reachable from
+   main in every environment this runs in).
+
+   Contract:
+     - Hufi.orgData.load()                 async, populates state, notifies
+     - Hufi.orgData.getState()             sync snapshot (null before load)
+     - Hufi.orgData.isMock()               true if org-graph is mock-backed
+     - Hufi.orgData.subscribe(fn)          fn(state) on every change
+     - Hufi.orgData.getAgentById(id)
+     - Hufi.orgData.relationshipsFor(type, id)   edges touching a node
+     - Hufi.orgData.createTeam({name, description})
+     - Hufi.orgData.createGraphProject({name, description, repository_ref})
+     - Hufi.orgData.createResource({name, resource_type, description, metadata})
+     - Hufi.orgData.createRoom({room_type, host_type, host_id, name})
+     - Hufi.orgData.addRelationship({relationship_type, source_type, source_id,
+                                      target_type, target_id, primary})
+         -> resolves the created relationship, or throws an Error with
+            `.needsApproval = true` and `.message` in plain German when the
+            backend returns 409 (cycle / archived membership / policy).
+     - Hufi.orgData.removeRelationship(id)
+   ========================================================================== */
+(function () {
+  const Hufi = (window.Hufi = window.Hufi || {});
+
+  let state = null; // { agents, teams, graphProjects, resources, relationships, rooms, mock }
+  const listeners = [];
+
+  function notify() {
+    listeners.forEach((fn) => {
+      try { fn(state); } catch (e) { console.error(e); }
+    });
+  }
+
+  function nowIso() { return new Date().toISOString(); }
+  function mockId(prefix) { return `${prefix}-${Math.random().toString(36).slice(2, 10)}`; }
+
+  // ---------- Mock dataset (dev-only, see banner requirement above) ----------
+  function buildMockSnapshot(agents) {
+    const teams = [
+      { id: 'mock-team-mkt', name: 'Marketing', description: 'Kampagnen, Inhalte, Auftritt.', status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+      { id: 'mock-team-dev', name: 'Entwicklung', description: 'Produkt- und Plattformentwicklung.', status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+      { id: 'mock-team-infra', name: 'Infrastruktur', description: 'Server, Deployments, Betrieb.', status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+      { id: 'mock-team-qa', name: 'Qualitätsprüfung', description: 'Prüfungen und Freigaben.', status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+    ];
+    const graphProjects = [
+      { id: 'mock-proj-hufmanager', name: 'HufManager', description: 'Interne Steuerungsoberfläche.', repository_ref: 'passaondigital/HufManager', status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+      { id: 'mock-proj-hufiapp', name: 'HufiApp', description: 'Mobile/Web-App für Kunden.', repository_ref: 'passaondigital/HufiApp', status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+      { id: 'mock-proj-hufiagents', name: 'HufiAgents', description: 'Diese Plattform.', repository_ref: 'passaondigital/HufiAgents', status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+    ];
+    const resources = [
+      { id: 'mock-res-repo-hufiagents', name: 'HufiAgents', resource_type: 'github_repo', description: 'Haupt-Repository.', metadata: { visibility: 'private', language: 'Python' }, status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+      { id: 'mock-res-xxl', name: 'XXL Server', resource_type: 'server', description: 'Produktionsserver.', metadata: {}, status: 'active', created_at: nowIso(), archived_at: null, _mock: true },
+    ];
+    const rooms = [
+      { id: 'mock-room-company', room_type: 'company', host_type: 'company', host_id: 'hufi', name: 'Firmenchat', created_at: nowIso(), archived_at: null, _mock: true },
+      ...teams.map((t) => ({ id: `mock-room-team-${t.id}`, room_type: 'team', host_type: 'team', host_id: t.id, name: `${t.name} Teamchat`, created_at: nowIso(), archived_at: null, _mock: true })),
+      ...graphProjects.map((p) => ({ id: `mock-room-proj-${p.id}`, room_type: 'project', host_type: 'project', host_id: p.id, name: `${p.name} Projektchat`, created_at: nowIso(), archived_at: null, _mock: true })),
+    ];
+
+    const relationships = [];
+    let i = 0;
+    agents.forEach((agent) => {
+      const team = teams[i % teams.length];
+      const project = graphProjects[i % graphProjects.length];
+      relationships.push({
+        id: mockId('mock-rel'), relationship_type: 'member_of_team',
+        source_type: 'agent', source_id: agent.id, target_type: 'team', target_id: team.id,
+        primary: true, created_at: nowIso(), removed_at: null, _mock: true,
+      });
+      relationships.push({
+        id: mockId('mock-rel'), relationship_type: 'works_on_project',
+        source_type: 'agent', source_id: agent.id, target_type: 'project', target_id: project.id,
+        primary: true, created_at: nowIso(), removed_at: null, _mock: true,
+      });
+      i += 1;
+    });
+
+    return { teams, graphProjects, resources, relationships, rooms };
+  }
+
+  // ---------- Load ----------
+  Hufi.orgData = {
+    async load() {
+      const agents = await Hufi.api('/agents').catch(() => []);
+      let graph;
+      let mock = false;
+      try {
+        graph = await Hufi.api('/org');
+        graph = {
+          teams: graph.teams || [],
+          graphProjects: graph.graph_projects || [],
+          resources: graph.resources || [],
+          relationships: graph.relationships || [],
+          rooms: graph.chat_rooms || [],
+        };
+      } catch (e) {
+        mock = true;
+        graph = buildMockSnapshot(agents);
+      }
+      state = { agents, ...graph, mock };
+      notify();
+      return state;
+    },
+
+    getState() { return state; },
+    isMock() { return !!(state && state.mock); },
+    subscribe(fn) { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; },
+
+    getAgentById(id) { return state?.agents.find((a) => a.id === id) || null; },
+    getTeamById(id) { return state?.teams.find((t) => t.id === id) || null; },
+    getProjectById(id) { return state?.graphProjects.find((p) => p.id === id) || null; },
+    getResourceById(id) { return state?.resources.find((r) => r.id === id) || null; },
+
+    relationshipsFor(nodeType, nodeId) {
+      if (!state) return [];
+      return state.relationships.filter(
+        (r) => !r.removed_at && ((r.source_type === nodeType && r.source_id === nodeId) || (r.target_type === nodeType && r.target_id === nodeId))
+      );
+    },
+
+    async createTeam({ name, description }) {
+      if (state.mock) {
+        const team = { id: mockId('mock-team'), name, description: description || '', status: 'active', created_at: nowIso(), archived_at: null, _mock: true };
+        state.teams.push(team);
+        notify();
+        return team;
+      }
+      const team = await Hufi.api('/teams', { method: 'POST', body: JSON.stringify({ name, description }) });
+      state.teams.push(team);
+      notify();
+      return team;
+    },
+
+    async createGraphProject({ name, description, repository_ref }) {
+      if (state.mock) {
+        const project = { id: mockId('mock-proj'), name, description: description || '', repository_ref: repository_ref || null, status: 'active', created_at: nowIso(), archived_at: null, _mock: true };
+        state.graphProjects.push(project);
+        notify();
+        return project;
+      }
+      const project = await Hufi.api('/graph-projects', { method: 'POST', body: JSON.stringify({ name, description, repository_ref }) });
+      state.graphProjects.push(project);
+      notify();
+      return project;
+    },
+
+    async createResource({ name, resource_type, description, metadata }) {
+      if (state.mock) {
+        const resource = { id: mockId('mock-res'), name, resource_type, description: description || '', metadata: metadata || {}, status: 'active', created_at: nowIso(), archived_at: null, _mock: true };
+        state.resources.push(resource);
+        notify();
+        return resource;
+      }
+      const resource = await Hufi.api('/resources', { method: 'POST', body: JSON.stringify({ name, resource_type, description, metadata }) });
+      state.resources.push(resource);
+      notify();
+      return resource;
+    },
+
+    async createRoom({ room_type, host_type, host_id, name }) {
+      if (state.mock) {
+        const room = { id: mockId('mock-room'), room_type, host_type, host_id, name, created_at: nowIso(), archived_at: null, _mock: true };
+        state.rooms.push(room);
+        notify();
+        return room;
+      }
+      const room = await Hufi.api('/rooms', { method: 'POST', body: JSON.stringify({ room_type, host_type, host_id, name }) });
+      state.rooms.push(room);
+      notify();
+      return room;
+    },
+
+    async addRelationship({ relationship_type, source_type, source_id, target_type, target_id, primary }) {
+      if (state.mock) {
+        const rel = { id: mockId('mock-rel'), relationship_type, source_type, source_id, target_type, target_id, primary: !!primary, created_at: nowIso(), removed_at: null, _mock: true };
+        state.relationships.push(rel);
+        notify();
+        return rel;
+      }
+      try {
+        const rel = await Hufi.api('/relationships', { method: 'POST', body: JSON.stringify({ relationship_type, source_type, source_id, target_type, target_id, primary }) });
+        state.relationships.push(rel);
+        notify();
+        return rel;
+      } catch (e) {
+        // Hufi.api() surfaces the FastAPI `detail` string as e.message for
+        // any non-2xx status, including 409 (cycle / archived / policy).
+        // We can't see the raw status code here, so treat every rejection
+        // from this endpoint as approval-needed language rather than a
+        // generic failure -- matches the product rule that relationship
+        // changes never fail silently or with technical text.
+        const err = new Error(e.message || 'Diese Änderung ist so nicht möglich.');
+        err.needsApproval = true;
+        throw err;
+      }
+    },
+
+    async removeRelationship(id) {
+      if (state.mock) {
+        const rel = state.relationships.find((r) => r.id === id);
+        if (rel) rel.removed_at = nowIso();
+        notify();
+        return;
+      }
+      await Hufi.api(`/relationships/${id}`, { method: 'DELETE' });
+      const rel = state.relationships.find((r) => r.id === id);
+      if (rel) rel.removed_at = nowIso();
+      notify();
+    },
+  };
+})();

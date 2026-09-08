@@ -87,6 +87,76 @@ code, pre, .json-dump { font-family: var(--font-mono); }
   overflow: hidden;
 }
 
+/* ---------- Primary navigation (v1.2 "digital company" shell) ----------
+   Always visible at every breakpoint -- unlike .topbar (mobile-only chrome
+   for the Hufi/chat view), this is the calm top-level switcher between the
+   five main areas (Hufi/Firma/Projekte/Routinen/Arbeit). Feature views are
+   plain siblings inside #viewport, toggled via the [hidden] attribute by
+   Hufi.views.show() in nav.js -- see that file for the module contract. */
+.primary-nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.primary-nav::-webkit-scrollbar { display: none; }
+.primary-nav__item {
+  flex-shrink: 0;
+  background: none;
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  font-size: .86rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+  min-height: 40px;
+}
+.primary-nav__item:hover { background: var(--surface-2); color: var(--text); }
+.primary-nav__item[aria-current="page"] { background: var(--accent-bg); color: var(--accent-soft); font-weight: 600; }
+
+/* ---------- Viewport (the five top-level views) ----------
+   Only the view matching #root[data-active-view] is ever laid out; the
+   others carry [hidden] and generate no box, so they never affect grid
+   auto-placement (see nav.js for why this is safe). */
+.viewport {
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.view[hidden] { display: none; }
+
+/* Non-Hufi views get the full width -- the agent contact sidebar is only
+   meaningful while chatting, so it (and the mobile hamburger that opens it)
+   step aside for Firma/Projekte/Routinen/Arbeit. The right pane stays
+   available everywhere: Org-Canvas and the cards reuse it as their
+   contextual detail panel (see docs/product/ORG-CANVAS.md). */
+#root:not([data-active-view="hufi"]) .sidebar { display: none; }
+#root:not([data-active-view="hufi"]) #sidebarToggle { display: none; }
+@media (min-width: 700px) {
+  #root:not([data-active-view="hufi"]) .shell { grid-template-columns: minmax(0, 1fr); }
+  #root:not([data-active-view="hufi"]) .shell.rightpane-open { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+@media (min-width: 1100px) {
+  #root:not([data-active-view="hufi"]) .shell.rightpane-open { grid-template-columns: minmax(0, 1fr) 380px; }
+}
+
 .topbar {
   display: flex;
   align-items: center;
