@@ -272,11 +272,28 @@
     loadRoutines(container, agent.id);
   }
 
+  // QA fix: the routine list rendered the raw backend schedule grammar
+  // ("every monday at 08:00") and a raw ISO timestamp straight into the
+  // normal (non-Details) view -- a jargon leak. Translate what the narrow
+  // grammar (hufiagents/workforce/routines.py) actually produces; anything
+  // unrecognised falls back to the raw string rather than guessing.
+  const ROUTINE_WEEKDAY_DE = {
+    monday: 'montags', tuesday: 'dienstags', wednesday: 'mittwochs',
+    thursday: 'donnerstags', friday: 'freitags', saturday: 'samstags', sunday: 'sonntags',
+  };
+  function scheduleLabelDe(schedule) {
+    const m = String(schedule || '').match(/^every (day|monday|tuesday|wednesday|thursday|friday|saturday|sunday) at (\d{2}):(\d{2})$/);
+    if (!m) return schedule;
+    const [, kind, hh, mm] = m;
+    const cadence = kind === 'day' ? 'täglich' : ROUTINE_WEEKDAY_DE[kind];
+    return `${cadence} um ${hh}:${mm}`;
+  }
+
   async function loadRoutines(container, agentId) {
     const target = container.querySelector('#agentRoutines');
     try {
       const routines = await Hufi.api(`/routines?owner_agent_id=${encodeURIComponent(agentId)}`);
-      target.innerHTML = routines.map((r) => `<div class="row"><span>${Hufi.esc(r.schedule)}</span><span class="pill ${r.enabled ? 'tone-ok' : 'tone-idle'}">${r.enabled ? 'Aktiv' : 'Pausiert'}</span><button class="btn btn--ghost btn--sm" data-routine="${Hufi.esc(r.id)}">${r.enabled ? 'Pausieren' : 'Fortsetzen'}</button></div><p class="faint">Nächster Lauf: ${Hufi.esc(r.next_run || 'wird geplant')}</p>`).join('') || '<p class="faint">Keine Routinen.</p>';
+      target.innerHTML = routines.map((r) => `<div class="row"><span>${Hufi.esc(scheduleLabelDe(r.schedule))}</span><span class="pill ${r.enabled ? 'tone-ok' : 'tone-idle'}">${r.enabled ? 'Aktiv' : 'Pausiert'}</span><button class="btn btn--ghost btn--sm" data-routine="${Hufi.esc(r.id)}">${r.enabled ? 'Pausieren' : 'Fortsetzen'}</button></div><p class="faint">Nächster Lauf: ${Hufi.esc(r.next_run ? Hufi.fmtTime(r.next_run) : 'wird geplant')}</p>`).join('') || '<p class="faint">Keine Routinen.</p>';
       const add = Hufi.el('<button type="button" class="btn btn--ghost btn--sm">Routine anlegen</button>');
       add.addEventListener('click', async () => {
         const schedule = window.prompt('Wann? Zum Beispiel: every monday at 08:00');
