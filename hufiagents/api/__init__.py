@@ -601,13 +601,21 @@ def create_app(settings=None, providers=None):
             evidence = tx.work_evidence.list(limit=limit)
             evidence = [item for item in evidence if item.mission_id in mission_ids]
             reviews = tx.reviews.list(limit=limit)
-            reviews = [review for review in reviews if any(review.task_id == task.id for task in tasks)]
+            task_ids = {task.id for task in tasks}
+            reviews = [review for review in reviews if review.task_id in task_ids]
             return {
                 "completed_tasks": [task for task in tasks if str(task.status) == "completed"],
                 "active_or_blocking_tasks": [
-                    task for task in tasks if str(task.status) in {"running", "blocked", "waiting_approval"}
+                    task
+                    for task in tasks
+                    if str(task.status) in {"running", "blocked", "waiting_approval"}
                 ],
-                "generated_artifacts": [artifact for task in tasks for artifact in (task.result or "").splitlines() if artifact],
+                "generated_artifacts": [
+                    artifact
+                    for task in tasks
+                    for artifact in (task.result or "").splitlines()
+                    if artifact
+                ],
                 "work_evidence_count": len(evidence),
                 "reviews": reviews,
                 "affected_projects": sorted({task.project_id for task in tasks if task.project_id}),
