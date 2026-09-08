@@ -1,0 +1,260 @@
+/* ==========================================================================
+   Hufi — chat feature module.
+   Builds on tokens/components from app.css. Owns everything inside #chat.
+   ========================================================================== */
+
+.chat-thread {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5) var(--space-4) var(--space-4);
+}
+.chat-col {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* ---------- Empty / greeting state ---------- */
+.chat-empty {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--space-3);
+  padding: var(--space-6) var(--space-3);
+}
+.chat-empty__avatar {
+  background: linear-gradient(155deg, var(--accent), #7fa1ff);
+  color: #0b0e14;
+  margin-bottom: var(--space-2);
+}
+.chat-empty__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  margin: 0;
+  max-width: 26ch;
+}
+.chat-empty__sub {
+  margin: 0 0 var(--space-3);
+  max-width: 40ch;
+  font-size: .92rem;
+}
+.chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: center;
+  max-width: 560px;
+}
+.chip {
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: var(--space-2) var(--space-4);
+  font-size: .85rem;
+  cursor: pointer;
+  min-height: 40px;
+  transition: background var(--fast) var(--ease), border-color var(--fast) var(--ease), transform var(--fast) var(--ease);
+}
+.chip:hover { background: var(--surface-raised); border-color: var(--accent); }
+.chip:active { transform: scale(.97); }
+
+/* ---------- Message list / turns ---------- */
+.chat-msglist { display: flex; flex-direction: column; gap: var(--space-5); }
+.turn { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.bubble {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  font-size: .93rem;
+  line-height: 1.5;
+  max-width: 82%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.bubble--user {
+  align-self: flex-end;
+  background: var(--accent);
+  color: #fff;
+  border-bottom-right-radius: var(--radius-sm);
+}
+.bubble--hufi {
+  align-self: flex-start;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: var(--radius-sm);
+}
+
+.system-note {
+  align-self: center;
+  color: var(--text-faint);
+  font-size: .78rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-3);
+}
+
+/* ---------- Progress ---------- */
+.progress-lines { align-self: flex-start; max-width: 82%; }
+.progress-line {
+  color: var(--text-muted);
+  font-size: .82rem;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+.progress-line::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  flex-shrink: 0;
+  animation: hufiPulse 1.4s ease-in-out infinite;
+}
+@keyframes hufiPulse { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+
+.details-toggle {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  font-size: .78rem;
+  cursor: pointer;
+  padding: var(--space-1) var(--space-2);
+  min-height: 32px;
+}
+.details-toggle:hover { color: var(--accent-soft); }
+.details-panel {
+  align-self: stretch;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-3);
+}
+
+/* ---------- Audit timeline (inside Details) ---------- */
+.audit-timeline { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--space-3); }
+.audit-timeline__item {
+  position: relative;
+  padding-left: var(--space-4);
+  font-size: .82rem;
+}
+.audit-timeline__item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: .4em;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dot, var(--idle));
+}
+.audit-timeline__meta { color: var(--text-faint); font-size: .74rem; }
+.audit-timeline__label { font-weight: 600; }
+.audit-timeline__summary { font-size: .8rem; }
+.audit-timeline__raw { margin-top: var(--space-1); }
+.audit-timeline__raw summary { cursor: pointer; color: var(--text-faint); font-size: .74rem; }
+.audit-timeline__raw pre {
+  background: var(--bg);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  font-size: .74rem;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ---------- Approval card ---------- */
+.approval-card { align-self: stretch; }
+.approval-card__head { font-weight: 600; margin-bottom: var(--space-1); }
+.approval-card__body { color: var(--text-muted); font-size: .9rem; margin-bottom: var(--space-3); }
+.approval-card__details { margin-bottom: var(--space-3); }
+.approval-card__details summary { cursor: pointer; color: var(--text-faint); font-size: .78rem; }
+.approval-card__details-body { margin-top: var(--space-2); }
+.approval-card__actions { flex-wrap: wrap; }
+.approval-card__status { margin-top: var(--space-2); font-size: .85rem; }
+
+/* ---------- Result card ---------- */
+.result-card { align-self: stretch; }
+.result-card__head { margin-bottom: var(--space-2); }
+.result-card__text { font-size: .9rem; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.result-card__actions { margin-top: var(--space-3); flex-wrap: wrap; }
+.result-mini {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed var(--border);
+  color: var(--text-faint);
+  border-radius: var(--radius-full);
+  padding: var(--space-1) var(--space-3);
+  font-size: .78rem;
+  cursor: pointer;
+  min-height: 32px;
+}
+.result-mini:hover { color: var(--accent-soft); border-color: var(--accent); }
+
+/* ---------- Input bar ---------- */
+.chat-inputbar {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  padding: var(--space-3) var(--space-4);
+}
+.chat-inputbar .chat-col { flex-direction: row; align-items: flex-end; gap: var(--space-2); max-width: 720px; }
+.chat-input {
+  flex: 1;
+  min-height: 40px;
+  max-height: 160px;
+  resize: none;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-2) var(--space-4);
+  color: var(--text);
+  font-size: .93rem;
+  line-height: 1.4;
+}
+.chat-input:focus { outline: none; border-color: var(--accent); }
+.chat-mic, .chat-send {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.chat-mic:disabled { opacity: .5; cursor: not-allowed; }
+.chat-send {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.chat-send:hover { background: #3f6bec; }
+.chat-send:disabled { opacity: .5; cursor: default; background: var(--surface-2); border-color: var(--border); color: var(--text-muted); }
+
+/* ---------- Responsive ---------- */
+@media (max-width: 480px) {
+  .chat-thread { padding: var(--space-4) var(--space-3) var(--space-3); }
+  .chat-inputbar { padding: var(--space-2) var(--space-3); }
+  .bubble { max-width: 90%; }
+  .chat-empty__title { font-size: 1.25rem; }
+}
