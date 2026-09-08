@@ -6,7 +6,7 @@ from typing import Protocol, TypeVar
 from sqlalchemy import create_engine, event, insert, select, update
 from sqlalchemy.pool import StaticPool
 
-from hufiagents.contracts import AuditEvent, Contract, State, now
+from hufiagents.contracts import AuditEvent, Contract, State, WorkEvidence, now
 from hufiagents.orchestrator.state import TERMINAL, validate_transition
 from hufiagents.persistence.schema import MODELS, TABLES
 from hufiagents.redaction import redact
@@ -79,12 +79,40 @@ class AuditRows:
         return self._rows.list(**filters)
 
 
+class EvidenceRows:
+    """Repository boundary for WorkEvidence.
+
+    Sanitizing here ensures direct store users receive the same guarantee as
+    the HTTP API.  A caller can never accidentally persist a raw tool result.
+    """
+
+    def __init__(self, connection):
+        self._rows = Rows(connection, "work_evidence")
+
+    def add(self, record: WorkEvidence):
+        record.summary = redact(record.summary)
+        record.content = redact(record.content)
+        record.artifact_ref = redact(record.artifact_ref)
+        record.metadata = redact(record.metadata)
+        record.redacted_at = now()
+        return self._rows.add(record)
+
+    def get(self, identifier):
+        return self._rows.get(identifier)
+
+    def list(self, **filters):
+        return self._rows.list(**filters)
+
+
 class UnitOfWork:
     def __init__(self, connection):
         for name in TABLES:
             if name != "audit_log":
                 setattr(self, name, Rows(connection, name))
         self.audit = AuditRows(connection)
+        self.work_evidence = EvidenceRows(connection)
+        # Friendly singular alias used by service code and integrations.
+        self.evidence = self.work_evidence
 
     def log(self, event_type, *, task=None, mission_id=None, actor="system", **detail):
         self.audit.append(
@@ -201,6 +229,21 @@ class Store:
                     "hufiagents.persistence.migrations.004_routines_connectors"
                 ).apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (4)")
+            if 5 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.005_work_evidence"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (5)")
+            if 6 not in versions:
+                importlib.import_module("hufiagents.persistence.migrations.006_org_graph").apply(
+                    connection
+                )
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (6)")
+            if 7 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.007_skills_memory"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (7)")
 
     @contextmanager
     def transaction(self):

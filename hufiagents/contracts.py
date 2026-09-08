@@ -300,9 +300,149 @@ class AuditEvent(Contract):
     detail: dict[str, Any] = Field(default_factory=dict)
 
 
+class WorkEvidence(Contract):
+    """Sanitized, user-visible proof of work.
+
+    Evidence is deliberately separate from audit events: it may be shown in
+    product views, while the source payload is always passed through the
+    structured redaction boundary before persistence.
+    """
+
+    id: str = Field(default_factory=uid)
+    mission_id: str | None = None
+    task_id: str | None = None
+    source_type: str = Field(min_length=1, max_length=64)
+    evidence_type: str = Field(min_length=1, max_length=64)
+    summary: str = Field(default="", max_length=16000)
+    content: Any = None
+    artifact_ref: str | None = Field(default=None, max_length=2000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=now)
+    redacted_at: datetime | None = None
+
+
 class MemoryRecord(Contract):
     id: str = Field(default_factory=uid)
     owner_id: str
     key: str
     value: dict[str, Any]
+    created_at: datetime = Field(default_factory=now)
+
+
+class Team(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    status: Literal["active", "archived"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class GraphProject(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    repository_ref: str | None = None
+    status: Literal["active", "archived"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class Resource(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    resource_type: str = "other"
+    description: str = ""
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    status: Literal["active", "archived"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class GraphRelationship(Contract):
+    id: str = Field(default_factory=uid)
+    relationship_type: Literal[
+        "reports_to",
+        "member_of_team",
+        "works_on_project",
+        "responsible_for_resource",
+        "may_use_resource",
+    ]
+    source_type: str
+    source_id: str
+    target_type: str
+    target_id: str
+    primary: bool = False
+    created_at: datetime = Field(default_factory=now)
+    removed_at: datetime | None = None
+
+
+class ChatRoom(Contract):
+    id: str = Field(default_factory=uid)
+    room_type: Literal["agent", "team", "project", "company"]
+    host_type: str
+    host_id: str | None = None
+    name: str = Field(min_length=1, max_length=200)
+    created_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class CredentialRef(Contract):
+    """Metadata-only credential handle; plaintext values never enter this model."""
+
+    id: str = Field(default_factory=uid)
+    connector: str
+    label: str
+    scopes: list[str] = Field(default_factory=list)
+    status: Literal["active", "revoked"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    rotated_at: datetime | None = None
+    revoked_at: datetime | None = None
+
+
+class Skill(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    version: str = "1.0"
+    scope_type: Literal["global", "agent", "team", "project"] = "global"
+    scope_id: str | None = None
+    owner_agent_id: str | None = None
+    steps: list[dict[str, Any]] = Field(default_factory=list)
+    required_capabilities: list[str] = Field(default_factory=list)
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    output_schema: dict[str, Any] = Field(default_factory=dict)
+    risk_ceiling: Risk = Risk.R1
+    status: Literal["draft", "approved", "archived"] = "draft"
+    source: Literal["system", "manual", "learned"] = "manual"
+    success_count: int = 0
+    failure_count: int = 0
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+    last_used_at: datetime | None = None
+
+
+class ScopedMemory(Contract):
+    id: str = Field(default_factory=uid)
+    scope_type: Literal["user", "global", "agent", "project", "mission", "shared"]
+    scope_id: str | None = None
+    category: str = "general"
+    summary: str
+    content: str
+    importance: float = Field(0.5, ge=0, le=1)
+    confidence: float = Field(0.5, ge=0, le=1)
+    source: str = "manual"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+    last_used_at: datetime | None = None
+
+
+class LearningRecord(Contract):
+    id: str = Field(default_factory=uid)
+    mission_id: str
+    outcome: Literal[
+        "memory_created", "memory_updated", "skill_proposed", "skill_updated", "skipped"
+    ]
+    target_id: str | None = None
+    reason: str = ""
     created_at: datetime = Field(default_factory=now)
