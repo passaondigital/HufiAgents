@@ -299,6 +299,12 @@
     { re: /\bsk-[A-Za-z0-9]{20,}/, reason: 'Beginnt wie ein API-Schlüssel (sk-…).' },
     { re: /\bxox[bpoa]-[A-Za-z0-9-]{10,}/, reason: 'Beginnt wie ein Slack-Token (xox…-).' },
     { re: /\bAKIA[0-9A-Z]{16}\b/, reason: 'Sieht wie eine AWS Access Key ID aus (AKIA…).' },
+    { re: /-----BEGIN[ A-Z]*PRIVATE KEY-----/, reason: 'Enthält den Anfang eines privaten Schlüssels (PRIVATE KEY).' },
+    // key=value / key: value assignment of a password/token/secret-looking
+    // field -- catches "PASSWORD=...", "api_key: ...", "token=..." etc.
+    // Found missing during v1.2 product acceptance review (both this and
+    // the PRIVATE KEY pattern above were explicitly required test cases).
+    { re: /\b(password|passwort|token|api[_-]?key|secret|bearer)\s*[:=]\s*\S{4,}/i, reason: 'Sieht nach einem zugewiesenen Passwort oder Token aus.' },
   ];
 
   function interceptChatInput(text) {
