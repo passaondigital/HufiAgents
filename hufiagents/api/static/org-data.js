@@ -58,6 +58,50 @@
   function nowIso() { return new Date().toISOString(); }
   function mockId(prefix) { return `${prefix}-${Math.random().toString(36).slice(2, 10)}`; }
 
+  // ---------- Error translation ----------
+  // The real backend (hufiagents/org_graph.py and friends) raises plain
+  // English/technical `ValueError`s that FastAPI surfaces as the JSON
+  // `detail` string on 4xx responses -- Hufi.api() turns that into
+  // `err.message`. This product is German-only and plain-language by rule
+  // (docs/product/HUFI-UX-LANGUAGE.md); every caller that shows a rejection
+  // to the user MUST route it through this translator first rather than
+  // rendering `err.message` directly. Known strings come from reading
+  // org_graph.py's `raise ValueError(...)` call sites; unknown ones fall
+  // back to a generic German sentence rather than leaking raw English.
+  const KNOWN_ERRORS = [
+    [/reporting cycle/i, 'Diese Zuordnung würde einen Kreis in deiner Teamstruktur erzeugen.'],
+    [/archived nodes cannot gain memberships/i, 'Das geht nicht: Ein Team oder Mitarbeiter davon ist bereits archiviert.'],
+    [/self relationships are not allowed/i, 'Das geht nicht auf sich selbst.'],
+    [/reports_to requires agent nodes/i, 'Eine Berichtsbeziehung ist nur zwischen zwei Mitarbeitern möglich.'],
+    [/unsupported relationship type/i, 'Diese Art von Verbindung wird nicht unterstützt.'],
+    [/task does not belong to mission/i, 'Das passt nicht zusammen.'],
+    [/cannot rotate revoked credential/i, 'Eine aufgehobene Verbindung kann nicht erneuert werden.'],
+    [/resource not found/i, 'Das wurde nicht gefunden.'],
+    [/external cost budget exceeded/i, 'Diese Aufgabe darf aktuell keine kostenpflichtige KI verwenden.'],
+    [/approval resolution disabled/i, 'Freigaben sind in dieser Umgebung noch nicht eingerichtet.'],
+    [/owner approval token required/i, 'Dafür fehlt die Berechtigung.'],
+    [/authentication required/i, 'Bitte melde dich erneut an.'],
+  ];
+  Hufi.errors = {
+    translate(rawMessage) {
+      const raw = String(rawMessage || '');
+      const hit = KNOWN_ERRORS.find(([pattern]) => pattern.test(raw));
+      return hit ? hit[1] : 'Das hat leider nicht geklappt.';
+    },
+  };
+
+  // Every mutation below goes through this instead of calling Hufi.api()
+  // directly, so a rejection's `.message` is already German/plain-language
+  // by the time it reaches a UI catch block -- callers never need their own
+  // translation step.
+  async function postJson(path, body) {
+    try {
+      return await Hufi.api(path, { method: 'POST', body: JSON.stringify(body) });
+    } catch (e) {
+      throw new Error(Hufi.errors.translate(e.message));
+    }
+  }
+
   // ---------- Mock dataset (dev-only, see banner requirement above) ----------
   function buildMockSnapshot(agents) {
     const teams = [
@@ -153,7 +197,7 @@
         notify();
         return team;
       }
-      const team = await Hufi.api('/teams', { method: 'POST', body: JSON.stringify({ name, description }) });
+      const team = await postJson('/teams', { name, description });
       state.teams.push(team);
       notify();
       return team;
@@ -166,7 +210,7 @@
         notify();
         return project;
       }
-      const project = await Hufi.api('/graph-projects', { method: 'POST', body: JSON.stringify({ name, description, repository_ref }) });
+      const project = await postJson('/graph-projects', { name, description, repository_ref });
       state.graphProjects.push(project);
       notify();
       return project;
@@ -179,7 +223,7 @@
         notify();
         return resource;
       }
-      const resource = await Hufi.api('/resources', { method: 'POST', body: JSON.stringify({ name, resource_type, description, metadata }) });
+      const resource = await postJson('/resources', { name, resource_type, description, metadata });
       state.resources.push(resource);
       notify();
       return resource;
@@ -192,7 +236,7 @@
         notify();
         return room;
       }
-      const room = await Hufi.api('/rooms', { method: 'POST', body: JSON.stringify({ room_type, host_type, host_id, name }) });
+      const room = await postJson('/rooms', { room_type, host_type, host_id, name });
       state.rooms.push(room);
       notify();
       return room;
@@ -216,8 +260,13 @@
         // We can't see the raw status code here, so treat every rejection
         // from this endpoint as approval-needed language rather than a
         // generic failure -- matches the product rule that relationship
-        // changes never fail silently or with technical text.
-        const err = new Error(e.message || 'Diese Änderung ist so nicht möglich.');
+        // changes never fail silently or with technical text. The raw
+        // `detail` from org_graph.py is English/technical ("reporting
+        // cycle", "archived nodes cannot gain memberships", ...) -- run it
+        // through Hufi.errors.translate() so the user only ever sees the
+        // German plain-language version (found during v1.2 product
+        // acceptance review: this previously rendered the raw string).
+        const err = new Error(Hufi.errors.translate(e.message));
         err.needsApproval = true;
         throw err;
       }
@@ -230,7 +279,11 @@
         notify();
         return;
       }
-      await Hufi.api(`/relationships/${id}`, { method: 'DELETE' });
+      try {
+        await Hufi.api(`/relationships/${id}`, { method: 'DELETE' });
+      } catch (e) {
+        throw new Error(Hufi.errors.translate(e.message));
+      }
       const rel = state.relationships.find((r) => r.id === id);
       if (rel) rel.removed_at = nowIso();
       notify();

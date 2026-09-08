@@ -890,7 +890,23 @@ var is=function(){function e(e){return-e.tension*e.x-e.friction*e.v}function t(t
 
   function refresh() {
     const st = Hufi.orgData.getState();
-    if (els.banner) els.banner.hidden = !(st && st.mock);
+    // `mock` (dev fixtures) and `unavailable` (real backend unreachable --
+    // org-data.js's RC-safe path since it no longer fabricates company
+    // data, see docs/implementation/V1_2_FINAL_INTEGRATION.md) are two
+    // different situations and need different wording -- neither may be
+    // silently treated as "nothing to show" (found during v1.2 product
+    // acceptance review: this banner previously only knew about `mock`).
+    if (els.banner) {
+      if (st && st.mock) {
+        els.banner.hidden = false;
+        els.banner.querySelector('[data-banner-text]').textContent = 'Entwicklungsmodus — Beispieldaten, das Backend ist noch nicht verbunden.';
+      } else if (st && st.unavailable) {
+        els.banner.hidden = false;
+        els.banner.querySelector('[data-banner-text]').textContent = 'Die Firmenstruktur kann gerade nicht geladen werden. Bitte versuche es in Kürze erneut.';
+      } else {
+        els.banner.hidden = true;
+      }
+    }
     updateSubnavActive();
     if (!st) {
       els.graphEl.hidden = true;
@@ -924,7 +940,7 @@ var is=function(){function e(e){return-e.tension*e.x-e.friction*e.v}function t(t
     const root = Hufi.el('<div class="org-canvas"></div>');
     container.appendChild(root);
 
-    const banner = Hufi.el('<div class="org-canvas__banner" hidden><span aria-hidden="true">⚠️</span><span>Entwicklungsmodus — Beispieldaten, das Backend ist noch nicht verbunden.</span></div>');
+    const banner = Hufi.el('<div class="org-canvas__banner" hidden><span aria-hidden="true">⚠️</span><span data-banner-text></span></div>');
     root.appendChild(banner);
 
     const toolbar = Hufi.el(`<div class="org-canvas__toolbar">

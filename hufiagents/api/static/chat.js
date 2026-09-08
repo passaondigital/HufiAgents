@@ -342,7 +342,7 @@
       } catch (error) {
         actionsEl.querySelectorAll('button').forEach((b) => { b.disabled = false; });
         statusEl.hidden = false;
-        statusEl.textContent = 'Die Routine konnte nicht eingerichtet werden: ' + error.message;
+        statusEl.textContent = 'Die Routine konnte nicht eingerichtet werden: ' + Hufi.errors.translate(error.message);
       }
     });
 
@@ -399,7 +399,7 @@
       });
     } catch (error) {
       const hufiBubble = turnEl.querySelector('.bubble--hufi');
-      hufiBubble.textContent = 'Das hat leider nicht geklappt: ' + error.message;
+      hufiBubble.textContent = 'Das hat leider nicht geklappt: ' + Hufi.errors.translate(error.message);
       return;
     }
 
@@ -582,7 +582,7 @@
         statusEl.className = 'approval-card__status ' + (action === 'approve' ? 'muted' : 'muted');
       } catch (error) {
         statusEl.hidden = false;
-        statusEl.textContent = 'Fehlgeschlagen: ' + error.message;
+        statusEl.textContent = 'Fehlgeschlagen: ' + Hufi.errors.translate(error.message);
         approveBtn.disabled = false;
         denyBtn.disabled = false;
       }

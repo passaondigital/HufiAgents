@@ -27,6 +27,13 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+/* `[hidden]` is a low-specificity UA rule; `.org-canvas__banner{display:flex}`
+   above has equal specificity and loads later, so it always won and the
+   banner stayed visible even against a real, connected backend (found
+   during v1.2 product acceptance review). Same fix as app.css's
+   `.row[hidden]`/chat.css's `.chat-empty[hidden]` -- reassert display:none
+   at matching specificity. */
+.org-canvas__banner[hidden] { display: none; }
 
 /* ---------- Toolbar ---------- */
 .org-canvas__toolbar {
