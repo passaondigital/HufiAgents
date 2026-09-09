@@ -275,6 +275,34 @@ class EvidenceCollector:
             evidence_type = "ARCHIVED"
             summary = f"Agent archiviert: {detail.get('agent_id', agent_id)}"
 
+        # 11. Browser automation
+        elif event_type == "browser_navigated":
+            source_type = "BROWSER"
+            evidence_type = "NAVIGATED"
+            url = detail.get("url", "")
+            summary = f"Seite geöffnet: {url}"
+            metadata["url"] = url
+            metadata["session_id"] = detail.get("session_id")
+
+        elif event_type == "browser_action_executed" or event_type == "browser_action_completed":
+            source_type = "BROWSER"
+            evidence_type = "INTERACTED"
+            action = detail.get("action", "")
+            selector = detail.get("selector", "")
+            summary = f"Browser-Aktion ausgeführt: {action}" + (
+                f" ({selector})" if selector else ""
+            )
+            metadata["action"] = action
+            metadata["session_id"] = detail.get("session_id")
+
+        elif event_type == "browser_screenshot_captured":
+            source_type = "BROWSER"
+            evidence_type = "SCREENSHOT"
+            artifact_ref = detail.get("artifact_ref")
+            summary = "Screenshot erstellt"
+            metadata["session_id"] = detail.get("session_id")
+            metadata["artifact_ref"] = artifact_ref
+
         else:
             return None
 

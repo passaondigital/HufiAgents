@@ -744,7 +744,6 @@ def create_app(settings=None, providers=None):
                 "source": "persisted_records",
             }
 
-<<<<<<< HEAD
     # -----------------------------------------------------------------------
     # Workforce Builder endpoints
     # -----------------------------------------------------------------------
@@ -963,6 +962,5 @@ def create_app(settings=None, providers=None):
             required_scope=body.required_scope,
         )
         return {"status": "ok", "allowed": allowed}
->>>>>>> origin/codex/v1-3-persistent-workspace
 
     return app

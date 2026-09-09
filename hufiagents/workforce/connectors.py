@@ -112,4 +112,3 @@ class ConnectorRegistry:
                 raise PermissionError(f"grant missing required permission scope '{required_scope}'")
 
             return True
-

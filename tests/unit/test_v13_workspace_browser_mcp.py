@@ -2,7 +2,6 @@ import pytest
 
 from hufiagents.browser import BrowserAutomationService
 from hufiagents.contracts import (
-    Agent,
     AgentConnectorAccess,
     ConnectorRegistration,
     MCPServerRegistration,
@@ -105,7 +104,9 @@ def test_v13_browser_automation_and_work_evidence(tmp_path):
     browser = BrowserAutomationService(store, sessions)
 
     # Navigation & Evidence
-    dom_ev = browser.navigate("builder", browser_sess.id, "https://example.com/dashboard?token=SECRET123")
+    dom_ev = browser.navigate(
+        "builder", browser_sess.id, "https://example.com/dashboard?token=SECRET123"
+    )
     assert dom_ev.evidence_type == "browser_dom"
     assert "SECRET123" not in dom_ev.summary
     assert "SECRET123" not in dom_ev.metadata["url"]
@@ -148,7 +149,7 @@ def test_v13_mcp_adapter_registration_discovery_and_invocation(tmp_path):
     )
     assert server.status == "active"
 
-    tool1 = mcp.register_tool(
+    mcp.register_tool(
         MCPToolDefinition(
             server_id=server.id,
             name="read_repo",
@@ -157,7 +158,7 @@ def test_v13_mcp_adapter_registration_discovery_and_invocation(tmp_path):
         )
     )
 
-    tool2 = mcp.register_tool(
+    mcp.register_tool(
         MCPToolDefinition(
             server_id=server.id,
             name="delete_repo",
@@ -170,7 +171,9 @@ def test_v13_mcp_adapter_registration_discovery_and_invocation(tmp_path):
     assert len(tools) == 2
 
     # Agent with R1 risk ceiling invokes R1 tool -> auto_allow
-    tool_call = mcp.invoke_tool("builder", "read_repo", {"repo": "owner/repo", "api_key": "SECRET-TOKEN"})
+    tool_call = mcp.invoke_tool(
+        "builder", "read_repo", {"repo": "owner/repo", "api_key": "SECRET-TOKEN"}
+    )
     assert tool_call.result_status == "ok"
     assert "SECRET-TOKEN" not in tool_call.result_summary
 
@@ -215,11 +218,15 @@ def test_v13_connector_permission_scopes_and_least_privilege(tmp_path):
     assert access.status == "active"
 
     # Valid scope check passes
-    assert registry.check_access("builder", github.id, "repo.read", mode="read", required_scope="repo:read")
+    assert registry.check_access(
+        "builder", github.id, "repo.read", mode="read", required_scope="repo:read"
+    )
 
     # Missing scope fails
     with pytest.raises(PermissionError, match="missing required permission scope"):
-        registry.check_access("builder", github.id, "repo.read", mode="read", required_scope="repo:admin")
+        registry.check_access(
+            "builder", github.id, "repo.read", mode="read", required_scope="repo:admin"
+        )
 
     # Unassigned agent fails even if team/org member (no implicit grants)
     with pytest.raises(PermissionError, match="no active connector access grant"):

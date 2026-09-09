@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 from hufiagents.api import create_app
 from hufiagents.config import Settings
 from hufiagents.orchestrator.registry import AgentRegistry
-from hufiagents.persistence.repository import Store
 from hufiagents.providers.fake import FakeProvider
 
 
@@ -26,13 +25,13 @@ def api_client(tmp_path):
 
 def test_v13_api_computer_session_lifecycle(api_client):
     # Setup workspace
-    sessions = api_client.post("/agents")
     ws_res = api_client.get("/agents/builder")
     assert ws_res.status_code == 200
 
     # Create workspace via low-level store/session helper or API
     app = api_client.app
     from hufiagents.workforce.sessions import SessionService
+
     sessions_svc = SessionService(app.state.store, app.state.engine.settings.workspace_root)
     ws = sessions_svc.create_workspace("builder", "builder-api-ws")
     comp = sessions_svc.prepare_computer("builder", ws.id)
@@ -42,11 +41,15 @@ def test_v13_api_computer_session_lifecycle(api_client):
     assert res_act.status_code == 200
     assert res_act.json()["status"] == "active"
 
-    res_snap = api_client.post(f"/sessions/computer/{comp_id}/snapshot?agent_id=builder&snapshot_name=snap1")
+    res_snap = api_client.post(
+        f"/sessions/computer/{comp_id}/snapshot?agent_id=builder&snapshot_name=snap1"
+    )
     assert res_snap.status_code == 200
     assert res_snap.json()["status"] == "snapshot"
 
-    res_reset = api_client.post(f"/sessions/computer/{comp_id}/reset?agent_id=builder&snapshot_name=snap1")
+    res_reset = api_client.post(
+        f"/sessions/computer/{comp_id}/reset?agent_id=builder&snapshot_name=snap1"
+    )
     assert res_reset.status_code == 200
     assert res_reset.json()["status"] == "reset"
 
@@ -56,7 +59,12 @@ def test_v13_api_computer_session_lifecycle(api_client):
 
     res_ho = api_client.post(
         f"/sessions/computer/{comp_id}/handoff",
-        json={"agent_id": "builder", "target_agent_id": "reviewer", "session_id": comp_id, "summary": "check code"},
+        json={
+            "agent_id": "builder",
+            "target_agent_id": "reviewer",
+            "session_id": comp_id,
+            "summary": "check code",
+        },
     )
     assert res_ho.status_code == 200
     assert res_ho.json()["from_agent_id"] == "builder"
@@ -65,6 +73,7 @@ def test_v13_api_computer_session_lifecycle(api_client):
 def test_v13_api_browser_automation_endpoints(api_client):
     app = api_client.app
     from hufiagents.workforce.sessions import SessionService
+
     sessions_svc = SessionService(app.state.store, app.state.engine.settings.workspace_root)
     ws = sessions_svc.create_workspace("builder", "builder-browser-api-ws")
     browser_sess = sessions_svc.prepare_browser("builder", ws.id)
@@ -92,7 +101,13 @@ def test_v13_api_browser_automation_endpoints(api_client):
     # Interact
     res_act = api_client.post(
         "/browser/interact",
-        json={"agent_id": "builder", "session_id": browser_id, "action": "fill", "selector": "#user", "value": "pascal"},
+        json={
+            "agent_id": "builder",
+            "session_id": browser_id,
+            "action": "fill",
+            "selector": "#user",
+            "value": "pascal",
+        },
     )
     assert res_act.status_code == 201
     assert res_act.json()["evidence_type"] == "browser_action"
@@ -134,7 +149,11 @@ def test_v13_api_mcp_endpoints(api_client):
     # Invoke Tool
     res_inv = api_client.post(
         "/mcp/invoke",
-        json={"agent_id": "builder", "tool_name": "sql_query", "params": {"query": "SELECT * FROM users"}},
+        json={
+            "agent_id": "builder",
+            "tool_name": "sql_query",
+            "params": {"query": "SELECT * FROM users"},
+        },
     )
     assert res_inv.status_code == 201
     assert res_inv.json()["result_status"] == "ok"
@@ -144,6 +163,7 @@ def test_v13_api_connector_check_endpoints(api_client):
     # Register Connector
     with api_client.app.state.store.transaction() as tx:
         from hufiagents.contracts import ConnectorRegistration
+
         conn = tx.connectors.add(
             ConnectorRegistration(
                 name="slack-conn",

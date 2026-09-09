@@ -58,6 +58,10 @@ class Settings(BaseSettings):
     # Empty (default) keeps the existing 127.0.0.1/localhost/testserver-only
     # allowlist, so nothing changes for local dev or the test suite.
     public_hostname: str = ""
+    # V1.3 Browser configuration. browser_allow_localhost is False in production
+    # to protect against SSRF; test fixtures explicitly enable it for local test servers.
+    browser_headless: bool = True
+    browser_allow_localhost: bool = False
 
     @model_validator(mode="after")
     def heartbeat_order(self):

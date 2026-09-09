@@ -3,6 +3,7 @@ import contextlib
 import json
 from datetime import timedelta
 
+from hufiagents.browser_worker import BrowserWorker
 from hufiagents.contracts import Handoff, MemoryRecord, State, now
 from hufiagents.orchestrator.planner import Planner
 from hufiagents.orchestrator.registry import AgentRegistry
@@ -17,6 +18,7 @@ from hufiagents.providers.ollama import OllamaProvider
 from hufiagents.providers.router import select_provider
 from hufiagents.redaction import redact
 from hufiagents.risk import Policy
+from hufiagents.tools.browser import BrowserTool
 from hufiagents.tools.files import FilesTool
 from hufiagents.tools.gateway import ApprovalPending, ToolGateway
 from hufiagents.tools.git import GitTool
@@ -43,6 +45,10 @@ class Orchestrator:
         }
         self.planner, self.reviewer = Planner(), Reviewer()
         self.gateway = ToolGateway(store, Policy(settings.risk_policy_path))
+        self.browser_worker = BrowserWorker(
+            headless=getattr(settings, "browser_headless", True),
+            allow_localhost=getattr(settings, "browser_allow_localhost", False),
+        )
         self.active = {}
         self.semaphore = asyncio.Semaphore(settings.max_concurrent_tasks)
         self.stopping = False
@@ -115,6 +121,8 @@ class Orchestrator:
         for runner in pending:
             runner.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
+        if hasattr(self, "browser_worker") and self.browser_worker:
+            await self.browser_worker.close_all()
 
     async def _loop(self):
         while not self.stopping:
@@ -432,6 +440,13 @@ class Orchestrator:
                 base_branch=project.default_branch if project else self.settings.github_base_branch,
                 token=self.settings.github_token.get_secret_value(),
                 dry_run=dry_run,
+            ),
+            "browser": BrowserTool(
+                workspace,
+                self.browser_worker,
+                store=self.store,
+                settings=self.settings,
+                task=task,
             ),
         }
 

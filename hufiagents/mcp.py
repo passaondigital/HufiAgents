@@ -19,15 +19,10 @@ class MCPAdapter:
     def __init__(self, store):
         self.store = store
 
-    def register_server(
-        self, server: MCPServerRegistration
-    ) -> MCPServerRegistration:
+    def register_server(self, server: MCPServerRegistration) -> MCPServerRegistration:
         if server.transport not in {"stdio", "http_sse"}:
             raise ValueError("invalid MCP transport; must be 'stdio' or 'http_sse'")
-        if any(
-            val not in {r.value for r in Risk}
-            for val in server.risk_mapping.values()
-        ):
+        if any(val not in {r.value for r in Risk} for val in server.risk_mapping.values()):
             raise ValueError("MCP server risk mapping contains an unknown risk level")
 
         with self.store.transaction() as tx:
@@ -83,7 +78,8 @@ class MCPAdapter:
             # Capability & Risk Ceiling Enforcement
             if not _risk_at_most(tool_def.risk_ceiling, agent.risk_ceiling):
                 raise PermissionError(
-                    f"MCP tool risk {tool_def.risk_ceiling} exceeds agent risk ceiling {agent.risk_ceiling}"
+                    f"MCP tool risk {tool_def.risk_ceiling} exceeds "
+                    f"agent risk ceiling {agent.risk_ceiling}"
                 )
 
             # Check required scopes against agent connector grants if scopes present
@@ -125,7 +121,10 @@ class MCPAdapter:
                 return tool_call
 
             # Execute tool call (standard JSON-RPC execution emulation/stdio bridge)
-            raw_output = f"Executed MCP tool {tool_def.name} on server {server.name} with params {safe_params}"
+            raw_output = (
+                f"Executed MCP tool {tool_def.name} on server {server.name} "
+                f"with params {safe_params}"
+            )
             redacted_output = redact(raw_output)
 
             tool_call.execution_started = True
