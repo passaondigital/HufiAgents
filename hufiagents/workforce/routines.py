@@ -1,6 +1,7 @@
 """WF-5 recurring missions. Product schedules are parsed narrowly, never cron."""
 
 import re
+import threading
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -46,6 +47,7 @@ class RoutineService:
 
     def __init__(self, store, submit: Callable[[dict], object] | None = None):
         self.store, self.submit = store, submit
+        self._lock = threading.Lock()
 
     def create(self, routine: Routine) -> Routine:
         ZoneInfo(routine.timezone)
@@ -104,7 +106,7 @@ class RoutineService:
                 continue
 
             # Atomic claim per routine: re-verify and advance next_run inside single tx
-            with self.store.transaction() as tx:
+            with self._lock, self.store.transaction() as tx:
                 fresh = tx.routines.get(routine.id)
                 if (
                     not fresh.enabled

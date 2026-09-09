@@ -333,3 +333,85 @@ def test_zero_paid_model_calls_for_retrieval():
     res = service.assemble_context("Deterministic lookup", scopes=[("global", None)])
     assert len(res["memories"]) == 1
     assert res["memories"][0].summary == "Global Fact"
+
+
+def test_legacy_v12_db_migration_011_upgrade(tmp_path):
+    """Explicitly tests upgrading a legacy V1.2 schema without status column."""
+    db_path = tmp_path / "legacy_v12.sqlite3"
+    db_url = f"sqlite:///{db_path}"
+
+    from sqlalchemy import create_engine
+
+    from hufiagents.persistence.schema import TABLES
+
+    engine = create_engine(db_url)
+    with engine.begin() as conn:
+        for table in TABLES.values():
+            table.create(conn, checkfirst=True)
+        conn.exec_driver_sql(
+            "CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY);"
+        )
+        for v in range(1, 11):
+            conn.exec_driver_sql("INSERT INTO schema_migrations VALUES (?)", (v,))
+
+        conn.exec_driver_sql("ALTER TABLE scoped_memories DROP COLUMN status;")
+        conn.exec_driver_sql("""
+            INSERT INTO scoped_memories
+            (id, scope_type, scope_id, category, summary, content,
+             importance, confidence, source, created_at, updated_at)
+            VALUES ('mem-legacy-1', 'project', 'proj-100', 'fact', 'Legacy Rule',
+                    '"Legacy content"', 1.0, 1.0, 'system',
+                    '2026-01-01 00:00:00', '2026-01-01 00:00:00')
+        """)
+    engine.dispose()
+
+    # Initialize current Store/migration system
+    store = Store(db_url)
+    service = KnowledgeService(store)
+
+    # Verify migration 11 applied and integrity ok
+    with store.engine.connect() as conn:
+        versions = {row[0] for row in conn.exec_driver_sql("SELECT version FROM schema_migrations")}
+        assert 11 in versions
+
+        sm_cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(scoped_memories)")}
+        assert "status" in sm_cols
+
+        integrity = list(conn.exec_driver_sql("PRAGMA integrity_check"))
+        assert integrity[0][0] == "ok"
+
+    with store.transaction() as tx:
+        # Existing row survives and status = approved
+        legacy_mem = tx.scoped_memories.get("mem-legacy-1")
+        assert legacy_mem.summary == "Legacy Rule"
+        assert legacy_mem.status == "approved"
+
+    # New ScopedMemory insert succeeds
+    new_mem = service.create_memory(
+        ScopedMemory(
+            scope_type="project",
+            scope_id="proj-100",
+            category="guideline",
+            summary="New Post-Migration Rule",
+            content="New post-migration rule content",
+            status="approved",
+        )
+    )
+    assert new_mem.id is not None
+
+    # Update succeeds
+    with store.transaction() as tx:
+        mem_to_update = tx.scoped_memories.get("mem-legacy-1")
+        mem_to_update.summary = "Updated Legacy Rule"
+        tx.scoped_memories.save(mem_to_update)
+
+    # Reload succeeds
+    store2 = Store(db_url)
+    with store2.transaction() as tx2:
+        reloaded_legacy = tx2.scoped_memories.get("mem-legacy-1")
+        assert reloaded_legacy.summary == "Updated Legacy Rule"
+        assert reloaded_legacy.status == "approved"
+
+        reloaded_new = tx2.scoped_memories.get(new_mem.id)
+        assert reloaded_new.summary == "New Post-Migration Rule"
+        assert reloaded_new.status == "approved"
