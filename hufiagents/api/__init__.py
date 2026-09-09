@@ -13,14 +13,28 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from hufiagents import auth
 from hufiagents.api.org import router_for as org_router_for
+from hufiagents.browser import BrowserAutomationService
 from hufiagents.config import Settings
-from hufiagents.contracts import Agent, AgentMessage, Routine, ScopedMemory, Skill, WorkEvidence
+from hufiagents.contracts import (
+    Agent,
+    AgentConnectorAccess,
+    AgentMessage,
+    MCPServerRegistration,
+    MCPToolDefinition,
+    Routine,
+    ScopedMemory,
+    Skill,
+    WorkEvidence,
+)
 from hufiagents.knowledge import KnowledgeService
+from hufiagents.mcp import MCPAdapter
 from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
+from hufiagents.workforce.connectors import ConnectorRegistry
 from hufiagents.workforce.routines import RoutineService
+from hufiagents.workforce.sessions import SessionService
 from hufiagents.workforce.team import HufManagerTeamMission
 
 PUBLIC_PATHS = {"/health", "/login"}
@@ -28,6 +42,56 @@ PUBLIC_PATHS = {"/health", "/login"}
 
 class Resolution(BaseModel):
     note: str = Field("", max_length=2000)
+
+
+class BrowserNavigateRequest(BaseModel):
+    agent_id: str
+    session_id: str
+    url: str
+    task_id: str | None = None
+    mission_id: str | None = None
+
+
+class BrowserScreenshotRequest(BaseModel):
+    agent_id: str
+    session_id: str
+    label: str = "screenshot"
+    task_id: str | None = None
+    mission_id: str | None = None
+
+
+class BrowserInteractRequest(BaseModel):
+    agent_id: str
+    session_id: str
+    action: str
+    selector: str = ""
+    value: str = ""
+    task_id: str | None = None
+    mission_id: str | None = None
+
+
+class SessionHandoffRequest(BaseModel):
+    agent_id: str
+    target_agent_id: str
+    session_id: str
+    task_id: str | None = None
+    summary: str = "session handoff"
+
+
+class MCPInvokeRequest(BaseModel):
+    agent_id: str
+    tool_name: str
+    params: dict = Field(default_factory=dict)
+    task_id: str | None = None
+    mission_id: str | None = None
+
+
+class ConnectorCheckRequest(BaseModel):
+    agent_id: str
+    connector_id: str
+    capability: str
+    mode: str = "read"
+    required_scope: str | None = None
 
 
 class LoginRequest(BaseModel):
@@ -622,5 +686,144 @@ def create_app(settings=None, providers=None):
                 "team_filter": team_id,
                 "source": "persisted_records",
             }
+
+    def sessions_svc():
+        return SessionService(app.state.store, settings.workspace_root)
+
+    def browser_svc():
+        return BrowserAutomationService(app.state.store, sessions_svc())
+
+    def mcp_svc():
+        return MCPAdapter(app.state.store)
+
+    def connectors_svc():
+        return ConnectorRegistry(app.state.store)
+
+    @app.post("/sessions/computer/{identifier}/activate")
+    async def activate_computer(identifier: str, agent_id: str):
+        return sessions_svc().activate_computer(agent_id, identifier)
+
+    @app.post("/sessions/computer/{identifier}/snapshot")
+    async def snapshot_computer(identifier: str, agent_id: str, snapshot_name: str | None = None):
+        return sessions_svc().snapshot_computer(agent_id, identifier, snapshot_name)
+
+    @app.post("/sessions/computer/{identifier}/reset")
+    async def reset_computer(identifier: str, agent_id: str, snapshot_name: str | None = None):
+        return sessions_svc().reset_computer(agent_id, identifier, snapshot_name)
+
+    @app.post("/sessions/computer/{identifier}/recover")
+    async def recover_computer(identifier: str, agent_id: str):
+        return sessions_svc().recover_computer(agent_id, identifier)
+
+    @app.post("/sessions/computer/{identifier}/handoff")
+    async def handoff_computer(identifier: str, body: SessionHandoffRequest):
+        return sessions_svc().handoff_computer(
+            body.agent_id,
+            body.target_agent_id,
+            identifier,
+            task_id=body.task_id,
+            summary=body.summary,
+        )
+
+    @app.post("/sessions/browser/{identifier}/activate")
+    async def activate_browser(identifier: str, agent_id: str):
+        return sessions_svc().activate_browser(agent_id, identifier)
+
+    @app.post("/sessions/browser/{identifier}/snapshot")
+    async def snapshot_browser(identifier: str, agent_id: str, snapshot_name: str | None = None):
+        return sessions_svc().snapshot_browser(agent_id, identifier, snapshot_name)
+
+    @app.post("/sessions/browser/{identifier}/reset")
+    async def reset_browser(identifier: str, agent_id: str, snapshot_name: str | None = None):
+        return sessions_svc().reset_browser(agent_id, identifier, snapshot_name)
+
+    @app.post("/sessions/browser/{identifier}/recover")
+    async def recover_browser(identifier: str, agent_id: str):
+        return sessions_svc().recover_browser(agent_id, identifier)
+
+    @app.post("/sessions/browser/{identifier}/handoff")
+    async def handoff_browser(identifier: str, body: SessionHandoffRequest):
+        return sessions_svc().handoff_browser(
+            body.agent_id,
+            body.target_agent_id,
+            identifier,
+            task_id=body.task_id,
+            summary=body.summary,
+        )
+
+    @app.post("/browser/navigate", status_code=201)
+    async def browser_navigate(body: BrowserNavigateRequest):
+        return browser_svc().navigate(
+            body.agent_id,
+            body.session_id,
+            body.url,
+            task_id=body.task_id,
+            mission_id=body.mission_id,
+        )
+
+    @app.post("/browser/screenshot", status_code=201)
+    async def browser_screenshot(body: BrowserScreenshotRequest):
+        return browser_svc().take_screenshot(
+            body.agent_id,
+            body.session_id,
+            body.label,
+            task_id=body.task_id,
+            mission_id=body.mission_id,
+        )
+
+    @app.post("/browser/interact", status_code=201)
+    async def browser_interact(body: BrowserInteractRequest):
+        return browser_svc().interact(
+            body.agent_id,
+            body.session_id,
+            body.action,
+            body.selector,
+            body.value,
+            task_id=body.task_id,
+            mission_id=body.mission_id,
+        )
+
+    @app.post("/mcp/servers", status_code=201)
+    async def register_mcp_server(body: MCPServerRegistration):
+        return mcp_svc().register_server(body)
+
+    @app.get("/mcp/servers")
+    async def list_mcp_servers():
+        with app.state.store.transaction() as tx:
+            return tx.mcp_servers.list()
+
+    @app.post("/mcp/tools", status_code=201)
+    async def register_mcp_tool(body: MCPToolDefinition):
+        return mcp_svc().register_tool(body)
+
+    @app.get("/mcp/tools")
+    async def list_mcp_tools(server_id: str | None = None):
+        with app.state.store.transaction() as tx:
+            return tx.mcp_tools.list(**({"server_id": server_id} if server_id else {}))
+
+    @app.post("/mcp/invoke", status_code=201)
+    async def invoke_mcp_tool(body: MCPInvokeRequest):
+        return mcp_svc().invoke_tool(
+            body.agent_id,
+            body.tool_name,
+            body.params,
+            task_id=body.task_id,
+            mission_id=body.mission_id,
+        )
+
+    @app.post("/connectors/grant", status_code=201)
+    async def grant_connector_access(body: AgentConnectorAccess):
+        return connectors_svc().grant(body)
+
+    @app.post("/connectors/check")
+    async def check_connector_access(body: ConnectorCheckRequest):
+        allowed = connectors_svc().check_access(
+            body.agent_id,
+            body.connector_id,
+            body.capability,
+            mode=body.mode,
+            required_scope=body.required_scope,
+        )
+        return {"status": "ok", "allowed": allowed}
 
     return app

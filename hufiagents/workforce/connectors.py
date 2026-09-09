@@ -77,3 +77,39 @@ class ConnectorRegistry:
                 access_id=access.id,
             )
             return access
+
+    def check_access(
+        self,
+        agent_id: str,
+        connector_id: str,
+        capability: str,
+        mode: str = "read",
+        required_scope: str | None = None,
+    ) -> bool:
+        """Verify explicit agent grant. Team or org membership never grants access automatically."""
+        with self.store.transaction() as tx:
+            agent = tx.agents.get(agent_id)
+            connector = tx.connectors.get(connector_id)
+            if not connector.enabled or connector.auth_state != "configured":
+                raise PermissionError("connector is not configured and enabled")
+
+            # Must have direct active grant
+            grants = tx.agent_connector_access.list(
+                agent_id=agent_id, connector_id=connector_id, status="active"
+            )
+            if not grants:
+                raise PermissionError("agent has no active connector access grant")
+
+            grant = grants[0]
+            if capability not in grant.capabilities or mode not in grant.modes:
+                raise PermissionError("capability or mode not permitted by connector grant")
+
+            mapped_risk = Risk(connector.risk_mapping.get(capability, "R4"))
+            if not _risk_at_most(mapped_risk, agent.risk_ceiling):
+                raise PermissionError("connector action exceeds agent risk ceiling")
+
+            if required_scope and required_scope not in getattr(grant, "scopes", []):
+                raise PermissionError(f"grant missing required permission scope '{required_scope}'")
+
+            return True
+
