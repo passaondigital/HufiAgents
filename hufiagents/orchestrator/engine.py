@@ -308,6 +308,13 @@ class Orchestrator:
                         ctx_result = repo_svc.assemble_context(workspace.root, task.objective)
                         if ctx_result and ctx_result.get("selected_files"):
                             repo_ctx = ctx_result
+                            with self.store.transaction() as tx:
+                                tx.log(
+                                    "repo_context_prepared",
+                                    task=task,
+                                    selected_count=len(repo_ctx.get("selected_files", [])),
+                                    truncated=repo_ctx.get("truncated", False),
+                                )
                     except Exception:
                         pass
 
@@ -368,6 +375,7 @@ class Orchestrator:
                         artifacts=[artifact],
                     )
                 )
+                tx.log("handoff", task=task, from_agent=agent.id, to_agent="reviewer")
                 tx.transition(task, State.review)
         self.registry.get("reviewer")
         with self.store.transaction() as tx:

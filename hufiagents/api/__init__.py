@@ -2,6 +2,7 @@ import fcntl
 import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -16,6 +17,7 @@ from hufiagents.api.org import router_for as org_router_for
 from hufiagents.api.rooms import router_for as rooms_router_for
 from hufiagents.config import Settings
 from hufiagents.contracts import Agent, AgentMessage, Routine, ScopedMemory, Skill, WorkEvidence
+from hufiagents.evidence import get_agent_activity, get_mission_execution_feed
 from hufiagents.knowledge import KnowledgeService
 from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
@@ -156,6 +158,7 @@ def create_app(settings=None, providers=None):
                 lock.close()
 
     app = FastAPI(title="HufiAgents Core V1", lifespan=lifespan)
+    app.state.store = Store(settings.database_url)
     app.include_router(org_router_for(app))
     app.include_router(rooms_router_for(app))
     allowed_hosts = ["127.0.0.1", "localhost", "testserver"]
@@ -562,6 +565,26 @@ def create_app(settings=None, providers=None):
     async def work_evidence_item(identifier: str):
         with app.state.store.transaction() as tx:
             return tx.work_evidence.get(identifier)
+
+    @app.get("/missions/{mission_id}/execution")
+    async def mission_execution_feed(
+        request: Request,
+        mission_id: str,
+        mode: Literal["simple", "transparent", "live"] = "transparent",
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+    ):
+        with request.app.state.store.transaction() as tx:
+            return get_mission_execution_feed(tx, mission_id, mode=mode, limit=limit, offset=offset)
+
+    @app.get("/agents/{agent_id}/activity")
+    async def agent_activity_feed(
+        request: Request,
+        agent_id: str,
+        limit: int = Query(20, ge=1, le=100),
+    ):
+        with request.app.state.store.transaction() as tx:
+            return get_agent_activity(tx, agent_id, limit=limit)
 
     @app.get("/reviews")
     async def reviews(task_id: str):

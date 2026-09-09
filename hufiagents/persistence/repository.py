@@ -124,6 +124,14 @@ class UnitOfWork:
                 detail=detail,
             )
         )
+        try:
+            from hufiagents.evidence import EvidenceCollector
+
+            EvidenceCollector.process_event(
+                self, event_type, task=task, mission_id=mission_id, actor=actor, detail=detail
+            )
+        except Exception:
+            pass
 
     def transition(self, task, target, *, recovery=False, cancel=False, reason=""):
         validate_transition(task.status, target, recovery=recovery, cancel=cancel)
