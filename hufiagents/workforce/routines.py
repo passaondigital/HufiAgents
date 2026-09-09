@@ -87,7 +87,7 @@ class RoutineService:
             return routine
 
     def tick(self, at: datetime | None = None) -> list[str]:
-        """Submit due templates with durable, bounded retry state.
+        """Submit due templates with durable, bounded retry state and atomic claiming.
 
         ``retry_policy`` accepts ``max_attempts`` (default 2) and an optional
         ``retry_delay_seconds`` (default 300, capped at one day). A terminal
@@ -102,8 +102,32 @@ class RoutineService:
         for routine in due:
             if routine.next_run is None or routine.next_run > current:
                 continue
+
+            # Atomic claim per routine: re-verify and advance next_run inside single tx
+            with self.store.transaction() as tx:
+                fresh = tx.routines.get(routine.id)
+                if (
+                    not fresh.enabled
+                    or fresh.status != "active"
+                    or fresh.next_run is None
+                    or fresh.next_run > current
+                ):
+                    continue
+                next_due = next_occurrence(fresh.schedule, fresh.timezone, current)
+                fresh.last_run = current
+                fresh.next_run = next_due
+                fresh.updated_at = now()
+                tx.routines.save(fresh)
+
+            template = dict(fresh.mission_template)
+            if "constraints" in template or fresh.project_id:
+                constraints = dict(template.get("constraints") or {})
+                constraints.setdefault("routine_id", fresh.id)
+                constraints.setdefault("scheduled_for", current.isoformat())
+                template["constraints"] = constraints
+
             try:
-                mission = self.submit(routine.mission_template)
+                mission = self.submit(template)
             except Exception as exc:
                 with self.store.transaction() as tx:
                     fresh = tx.routines.get(routine.id)
@@ -117,7 +141,7 @@ class RoutineService:
                         fresh.notification_state = "pending"
                         event = "routine_retry_scheduled"
                     else:
-                        fresh.next_run = next_occurrence(fresh.schedule, fresh.timezone, current)
+                        fresh.next_run = next_due
                         fresh.retry_count = 0
                         fresh.notification_state = "failed"
                         event = "routine_dispatch_exhausted"
@@ -132,8 +156,6 @@ class RoutineService:
                 continue
             with self.store.transaction() as tx:
                 fresh = tx.routines.get(routine.id)
-                fresh.last_run = current
-                fresh.next_run = next_occurrence(fresh.schedule, fresh.timezone, current)
                 fresh.retry_count, fresh.notification_state = 0, "pending"
                 fresh.updated_at = now()
                 tx.routines.save(fresh)

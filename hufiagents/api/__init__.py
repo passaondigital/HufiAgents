@@ -22,6 +22,7 @@ from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
 from hufiagents.room_runtime import RoomMessageService
+from hufiagents.routine_runtime import RoutineScheduler
 from hufiagents.workforce.routines import RoutineService
 from hufiagents.workforce.team import HufManagerTeamMission
 
@@ -135,9 +136,18 @@ def create_app(settings=None, providers=None):
             room_svc = RoomMessageService(store, engine)
             app.state.room_message_service = room_svc
             engine.room_service = room_svc
+            routine_svc = RoutineService(store, engine.submit)
+            app.state.routine_service = routine_svc
+            routine_scheduler = RoutineScheduler(
+                routine_svc, settings.routine_poll_interval_seconds
+            )
+            app.state.routine_scheduler = routine_scheduler
             await engine.start()
+            await routine_scheduler.start()
             yield
         finally:
+            if "routine_scheduler" in locals() and routine_scheduler:
+                await routine_scheduler.stop()
             if engine:
                 await engine.stop()
             if store:
@@ -353,7 +363,11 @@ def create_app(settings=None, providers=None):
         return app.state.engine.workforce.receive_agent_result(identifier, **body.model_dump())
 
     def routines_service():
-        return RoutineService(app.state.store, app.state.engine.submit)
+        return getattr(
+            app.state,
+            "routine_service",
+            RoutineService(app.state.store, app.state.engine.submit),
+        )
 
     @app.get("/routines")
     async def routines(owner_agent_id: str | None = None):
@@ -365,6 +379,18 @@ def create_app(settings=None, providers=None):
     @app.post("/routines", status_code=201)
     async def create_routine(body: RoutineCreate):
         return routines_service().create(Routine(**body.model_dump()))
+
+    @app.post("/routines/runtime/tick")
+    async def routines_runtime_tick():
+        dispatched = routines_service().tick()
+        return {"dispatched": dispatched, "count": len(dispatched)}
+
+    @app.get("/routines/runtime/status")
+    async def routines_runtime_status():
+        scheduler = getattr(app.state, "routine_scheduler", None)
+        if scheduler:
+            return scheduler.status
+        return {"running": False, "status": "no_scheduler"}
 
     @app.patch("/routines/{identifier}")
     async def update_routine(identifier: str, body: RoutineUpdate):

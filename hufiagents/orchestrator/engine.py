@@ -53,6 +53,10 @@ class Orchestrator:
         self._room_notified: set = set()
 
     def submit(self, request):
+        if isinstance(request, dict):
+            from hufiagents.orchestrator.planner import MissionCreate
+
+            request = MissionCreate.model_validate(request)
         mission, tasks = self.planner.plan(request)
         # Validate paths and any explicit agent request before persisting or
         # dispatching a task, so a bad request fails at submit time (409) and
