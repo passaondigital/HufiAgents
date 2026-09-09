@@ -252,6 +252,11 @@ class Store:
                     "hufiagents.persistence.migrations.007_skills_memory"
                 ).apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (7)")
+            if 8 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.008_v1_3_workspace_browser_mcp"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (8)")
             if 9 not in versions:
                 importlib.import_module("hufiagents.persistence.migrations.009_room_runtime").apply(
                     connection

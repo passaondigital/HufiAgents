@@ -21,6 +21,8 @@ from hufiagents.contracts import (
     GraphRelationship,
     Handoff,
     LearningRecord,
+    MCPServerRegistration,
+    MCPToolDefinition,
     MemoryRecord,
     Mission,
     Resource,
@@ -73,6 +75,8 @@ MODELS = {
     "skills": Skill,
     "scoped_memories": ScopedMemory,
     "learning_records": LearningRecord,
+    "mcp_servers": MCPServerRegistration,
+    "mcp_tools": MCPToolDefinition,
 }
 JSON_FIELDS = {
     "constraints",
@@ -102,6 +106,9 @@ JSON_FIELDS = {
     "mention_agent_ids",
     "changes",
     "snapshot",
+    "args",
+    "env_keys",
+    "required_scopes",
 }
 INTEGER_FIELDS = {
     "budget_tokens",
@@ -112,6 +119,7 @@ INTEGER_FIELDS = {
     "quota_bytes",
     "max_tabs",
     "memory_limit_mb",
+    "active_tab_count",
 }
 # Per-table field type overrides: (table_name, field_name) → SQLAlchemy type.
 # Used when the same field name carries different Python types across contracts
@@ -129,6 +137,7 @@ FK = {
     "agent_id": "agents.id",
     "workspace_id": "agent_workspaces.id",
     "connector_id": "connectors.id",
+    "server_id": "mcp_servers.id",
 }
 TABLES = {}
 for name, model in MODELS.items():

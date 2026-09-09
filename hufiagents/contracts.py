@@ -229,8 +229,12 @@ class ComputerSession(Contract):
     id: str = Field(default_factory=uid)
     agent_id: str
     workspace_id: str
-    status: Literal["prepared", "active", "closed", "expired"] = "prepared"
+    status: Literal[
+        "prepared", "active", "closed", "expired", "snapshot", "reset", "recovered", "handoff"
+    ] = "prepared"
     persistence_policy: Literal["restart", "ephemeral"] = "ephemeral"
+    snapshot_path: str | None = None
+    handoff_token: str | None = None
     created_at: datetime = Field(default_factory=now)
     last_activity: datetime = Field(default_factory=now)
 
@@ -239,10 +243,16 @@ class BrowserSession(Contract):
     id: str = Field(default_factory=uid)
     agent_id: str
     workspace_id: str
-    status: Literal["prepared", "active", "closed", "expired"] = "prepared"
+    status: Literal[
+        "prepared", "active", "closed", "expired", "snapshot", "reset", "recovered", "handoff"
+    ] = "prepared"
     persistence_policy: Literal["restart", "ephemeral"] = "ephemeral"
     max_tabs: int = Field(1, ge=0, le=8)
     memory_limit_mb: int = Field(512, ge=64, le=2048)
+    current_url: str | None = None
+    active_tab_count: int = 1
+    snapshot_path: str | None = None
+    handoff_token: str | None = None
     created_at: datetime = Field(default_factory=now)
     last_activity: datetime = Field(default_factory=now)
 
@@ -270,17 +280,46 @@ class AgentConnectorAccess(Contract):
     connector_id: str
     capabilities: list[str] = Field(default_factory=list)
     modes: list[Literal["read", "write"]] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
     risk_ceiling: Risk = Risk.R1
     status: Literal["active", "disabled", "revoked"] = "active"
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
 
 
+class MCPServerRegistration(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=100)
+    version: str = Field(default="1.0", min_length=1, max_length=100)
+    transport: Literal["stdio", "http_sse"] = "stdio"
+    command_or_url: str = Field(min_length=1, max_length=1000)
+    args: list[str] = Field(default_factory=list)
+    env_keys: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    risk_mapping: dict[str, str] = Field(default_factory=dict)
+    status: Literal["active", "disabled", "error"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
+class MCPToolDefinition(Contract):
+    id: str = Field(default_factory=uid)
+    server_id: str
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    output_schema: dict[str, Any] = Field(default_factory=dict)
+    risk_ceiling: Risk = Risk.R1
+    required_scopes: list[str] = Field(default_factory=list)
+    status: Literal["active", "disabled"] = "active"
+    created_at: datetime = Field(default_factory=now)
+
+
 class Handoff(Contract):
     id: str = Field(default_factory=uid)
     from_agent_id: str
     to_agent_id: str
-    task_id: str
+    task_id: str | None = None
     summary: str
     artifacts: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=now)
@@ -288,7 +327,7 @@ class Handoff(Contract):
 
 class ToolCall(Contract):
     id: str = Field(default_factory=uid)
-    task_id: str
+    task_id: str | None = None
     tool: str
     action: str
     target: str
