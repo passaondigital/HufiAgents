@@ -6,11 +6,11 @@ The goal is not to copy another product. The goal is to reach the useful product
 
 ## Current status
 
-**Production baseline:** `v1.1.2`  
+**Production baseline:** `v1.2.0`  
 **Production URL:** `https://agents.heyhufi.com`  
-**Current development phase:** V1.2 — learning, Visible Work and Digital Company foundations.
+**Current development phase:** V1.3 — persistent Computer / Browser / Workspace and MCP adapters.
 
-V1.1.x is frozen except for real bug/security fixes.
+V1.2 is the current released production baseline.
 
 ## Core mission
 
