@@ -248,6 +248,33 @@ class EvidenceCollector:
             summary = f"Routine gestartet: {name}"
             metadata["routine_id"] = detail.get("routine_id")
 
+        # 10. Workforce provisioning
+        elif event_type == "agent_created":
+            source_type = "WORKFORCE"
+            evidence_type = "PROVISIONED"
+            display_name = detail.get("display_name") or detail.get("role") or agent_id
+            role = detail.get("role", "")
+            summary = f"Agent bereitgestellt: {display_name}" + (f" ({role})" if role else "")
+            metadata["role"] = role
+
+        elif event_type == "provisioning_completed":
+            source_type = "WORKFORCE"
+            evidence_type = "COMPLETED"
+            summary = f"Provisioning abgeschlossen: Agent {detail.get('agent_id', agent_id)}"
+            metadata["idempotency_key"] = detail.get("idempotency_key")
+
+        elif event_type == "agent_updated":
+            source_type = "WORKFORCE"
+            evidence_type = "UPDATED"
+            fields = detail.get("fields", [])
+            summary = f"Agent-Profil aktualisiert: {', '.join(fields) if fields else 'Felder'}"
+            metadata["fields"] = fields
+
+        elif event_type == "agent_archived":
+            source_type = "WORKFORCE"
+            evidence_type = "ARCHIVED"
+            summary = f"Agent archiviert: {detail.get('agent_id', agent_id)}"
+
         else:
             return None
 

@@ -105,6 +105,46 @@ class Agent(Contract):
     archived_at: datetime | None = None
 
 
+class AgentProfileHistory(Contract):
+    id: str = Field(default_factory=uid)
+    agent_id: str
+    version: int = Field(1, ge=1)
+    changed_at: datetime = Field(default_factory=now)
+    changed_by: str = "system"
+    summary: str = Field(default="", max_length=2000)
+    changes: dict[str, Any] = Field(default_factory=dict)
+    snapshot: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentProvisioningRequest(Contract):
+    agent_id: str | None = None
+    display_name: str = Field(min_length=1, max_length=200)
+    role: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=4000)
+    mission: str = Field(default="", max_length=4000)
+
+    team_ids: list[str] = Field(default_factory=list)
+    project_ids: list[str] = Field(default_factory=list)
+    skill_ids: list[str] = Field(default_factory=list)
+    memory_scopes: list[str] = Field(default_factory=list)
+    routine_ids: list[str] = Field(default_factory=list)
+
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    risk_ceiling: Risk = Risk.R1
+
+    model_policy: dict[str, Any] = Field(
+        default_factory=lambda: {"preferred": "local", "external_fallback": False}
+    )
+    model_preference: str | None = None
+    external_budget: int = Field(0, ge=0)
+
+    reviewer_agent_id: str | None = None
+    participation_mode: Literal["ACTIVE", "LISTENING", "SLEEPING"] = "ACTIVE"
+
+    source: str = "pascal"
+    idempotency_key: str | None = None
+
+
 class Channel(Contract):
     id: str = Field(default_factory=uid)
     name: str = Field(min_length=1, max_length=200)

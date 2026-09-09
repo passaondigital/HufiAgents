@@ -6,6 +6,7 @@ from hufiagents.contracts import (
     Agent,
     AgentConnectorAccess,
     AgentMessage,
+    AgentProfileHistory,
     AgentWorkspace,
     ApprovalRequest,
     AuditEvent,
@@ -41,6 +42,7 @@ MODELS = {
     "missions": Mission,
     "tasks": Task,
     "agents": Agent,
+    "agent_profile_history": AgentProfileHistory,
     "routines": Routine,
     "agent_workspaces": AgentWorkspace,
     "workspace_sessions": WorkspaceSession,
@@ -98,6 +100,8 @@ JSON_FIELDS = {
     "permissions",
     "risk_mapping",
     "mention_agent_ids",
+    "changes",
+    "snapshot",
 }
 INTEGER_FIELDS = {
     "budget_tokens",
@@ -108,6 +112,12 @@ INTEGER_FIELDS = {
     "quota_bytes",
     "max_tabs",
     "memory_limit_mb",
+}
+# Per-table field type overrides: (table_name, field_name) → SQLAlchemy type.
+# Used when the same field name carries different Python types across contracts
+# (e.g. Skill.version is a semver string, AgentProfileHistory.version is int).
+TABLE_FIELD_OVERRIDES: dict[tuple[str, str], type] = {
+    ("agent_profile_history", "version"): Integer,
 }
 FK = {
     "mission_id": "missions.id",
@@ -124,14 +134,15 @@ TABLES = {}
 for name, model in MODELS.items():
     columns = []
     for field in model.model_fields:
-        kind = (
+        kind = TABLE_FIELD_OVERRIDES.get(
+            (name, field),
             JSON
             if field in JSON_FIELDS
             else Integer
             if field in INTEGER_FIELDS
             else Boolean
             if field in {"execution_started", "dry_run"}
-            else String
+            else String,
         )
         args = [ForeignKey(FK[field])] if field in FK else []
         columns.append(

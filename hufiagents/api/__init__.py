@@ -16,7 +16,15 @@ from hufiagents import auth
 from hufiagents.api.org import router_for as org_router_for
 from hufiagents.api.rooms import router_for as rooms_router_for
 from hufiagents.config import Settings
-from hufiagents.contracts import Agent, AgentMessage, Routine, ScopedMemory, Skill, WorkEvidence
+from hufiagents.contracts import (
+    Agent,
+    AgentMessage,
+    AgentProvisioningRequest,
+    Routine,
+    ScopedMemory,
+    Skill,
+    WorkEvidence,
+)
 from hufiagents.evidence import get_agent_activity, get_mission_execution_feed
 from hufiagents.knowledge import KnowledgeService
 from hufiagents.orchestrator.engine import Orchestrator
@@ -25,6 +33,7 @@ from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
 from hufiagents.room_runtime import RoomMessageService
 from hufiagents.routine_runtime import RoutineScheduler
+from hufiagents.workforce.builder import WorkforceBuilder
 from hufiagents.workforce.routines import RoutineService
 from hufiagents.workforce.team import HufManagerTeamMission
 
@@ -677,5 +686,85 @@ def create_app(settings=None, providers=None):
                 "team_filter": team_id,
                 "source": "persisted_records",
             }
+
+    # -----------------------------------------------------------------------
+    # Workforce Builder endpoints
+    # -----------------------------------------------------------------------
+
+    class ProfileUpdate(BaseModel):
+        changes: dict = Field(default_factory=dict)
+        actor: str = Field("system", max_length=200)
+        summary: str = Field("", max_length=2000)
+
+    @app.post("/workforce/provision", status_code=201)
+    async def provision_agent(
+        request: AgentProvisioningRequest,
+        x_caller_agent_id: str = Header(default="system"),
+    ):
+        """Provision a new digital employee from a structured request.
+
+        Enforces privilege isolation: provisioned agent capabilities and risk
+        ceiling cannot exceed the caller's own ceiling.  Raw secret values are
+        rejected at the boundary.
+        """
+        store = app.state.store
+
+        # Resolve caller capabilities / ceiling from existing agent record, or
+        # fall back to an empty / R0 context so callers cannot self-escalate.
+        caller_caps: dict = {}
+        from hufiagents.contracts import Risk
+
+        caller_ceiling: Risk = Risk.R1
+        try:
+            with store.transaction() as tx:
+                caller = tx.agents.get(x_caller_agent_id)
+                caller_caps = caller.capabilities
+                caller_ceiling = caller.risk_ceiling
+        except KeyError:
+            pass  # Unknown caller → empty caps, R1 default
+
+        builder = WorkforceBuilder(store)
+        try:
+            agent = builder.provision(
+                request,
+                caller_capabilities=caller_caps,
+                caller_risk_ceiling=caller_ceiling,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+        return agent
+
+    @app.patch("/workforce/agents/{agent_id}/profile")
+    async def update_agent_profile(agent_id: str, body: ProfileUpdate):
+        """Apply profile changes to an existing agent (immutable fields are protected)."""
+        store = app.state.store
+        builder = WorkforceBuilder(store)
+        try:
+            agent = builder.update_profile(
+                agent_id,
+                body.changes,
+                actor=body.actor,
+                summary=body.summary,
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found.") from None
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+        return agent
+
+    @app.get("/workforce/agents/{agent_id}/profile-history")
+    async def get_agent_profile_history(agent_id: str):
+        """Return the full profile version history for an agent."""
+        store = app.state.store
+        builder = WorkforceBuilder(store)
+        try:
+            history = builder.get_profile_history(agent_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found.") from None
+        return {"agent_id": agent_id, "history": history, "count": len(history)}
 
     return app
