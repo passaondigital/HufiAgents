@@ -279,15 +279,47 @@ class Orchestrator:
                 with self.store.transaction() as tx:
                     mission = tx.missions.get(task.mission_id)
                     dependency_results = [tx.tasks.get(dep).result for dep in task.dependencies]
-                context = json.dumps(
-                    redact(
-                        {
-                            "constraints": mission.constraints,
-                            "dependency_results": dependency_results,
-                            "review_findings": [r.findings for r in reviews],
-                        }
-                    )
-                )
+
+                ENG_TOOLS = {"files", "git", "code", "repo", "terminal", "workspace"}
+                is_engineering = False
+                if agent:
+                    tools = set(agent.capabilities.get("tools", [])) | set(task.allowed_tools)
+                    role = (agent.role or "").lower()
+                    if role in {
+                        "builder",
+                        "reviewer",
+                        "engineer",
+                        "coder",
+                        "architect",
+                        "developer",
+                    } or bool(tools.intersection(ENG_TOOLS)):
+                        is_engineering = True
+                else:
+                    tools = set(task.allowed_tools)
+                    if bool(tools.intersection(ENG_TOOLS)):
+                        is_engineering = True
+
+                repo_ctx = None
+                if is_engineering and workspace.root.exists():
+                    try:
+                        from hufiagents.repo_context import RepoContextService
+
+                        repo_svc = RepoContextService()
+                        ctx_result = repo_svc.assemble_context(workspace.root, task.objective)
+                        if ctx_result and ctx_result.get("selected_files"):
+                            repo_ctx = ctx_result
+                    except Exception:
+                        pass
+
+                context_dict = {
+                    "constraints": mission.constraints,
+                    "dependency_results": dependency_results,
+                    "review_findings": [r.findings for r in reviews],
+                }
+                if repo_ctx:
+                    context_dict["repository_context"] = repo_ctx
+
+                context = json.dumps(redact(context_dict))
                 request = CompletionRequest(
                     objective=task.objective, context=context, max_tokens=task.budget_tokens or 512
                 )
