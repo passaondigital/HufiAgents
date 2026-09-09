@@ -7,8 +7,10 @@ from hufiagents.contracts import (
     AgentWorkspace,
     BrowserSession,
     ComputerSession,
+    Handoff,
     WorkspaceSession,
     now,
+    uid,
 )
 from hufiagents.tools.workspace import Workspace
 
@@ -55,14 +57,210 @@ class SessionService:
         record = ComputerSession(agent_id=agent_id, workspace_id=workspace_id)
         return self._add("computer_sessions", record, "computer_session_prepared")
 
+    def activate_computer(self, agent_id: str, session_id: str) -> ComputerSession:
+        with self.store.transaction() as tx:
+            record = tx.computer_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            record.status, record.last_activity = "active", now()
+            tx.computer_sessions.save(record)
+            tx.log("computer_session_activated", actor=agent_id, session_id=record.id)
+            return record
+
+    def snapshot_computer(
+        self, agent_id: str, session_id: str, snapshot_name: str | None = None
+    ) -> ComputerSession:
+        with self.store.transaction() as tx:
+            record = tx.computer_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            ws_path = self.workspace_path(record.workspace_id)
+            ws = Workspace(ws_path)
+            s_name = snapshot_name or f"snap-{record.id[:8]}"
+            snap_dir = ws.snapshot(s_name)
+            record.snapshot_path = str(snap_dir)
+            record.status, record.last_activity = "snapshot", now()
+            tx.computer_sessions.save(record)
+            tx.log(
+                "computer_session_snapshotted",
+                actor=agent_id,
+                session_id=record.id,
+                snapshot_path=str(snap_dir),
+            )
+            return record
+
+    def reset_computer(
+        self, agent_id: str, session_id: str, snapshot_name: str | None = None
+    ) -> ComputerSession:
+        with self.store.transaction() as tx:
+            record = tx.computer_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            ws_path = self.workspace_path(record.workspace_id)
+            ws = Workspace(ws_path)
+            s_name = snapshot_name or f"snap-{record.id[:8]}"
+            try:
+                ws.restore(s_name)
+            except FileNotFoundError:
+                pass
+            record.status, record.last_activity = "reset", now()
+            tx.computer_sessions.save(record)
+            tx.log("computer_session_reset", actor=agent_id, session_id=record.id)
+            return record
+
+    def recover_computer(self, agent_id: str, session_id: str) -> ComputerSession:
+        with self.store.transaction() as tx:
+            record = tx.computer_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            ws_path = self.workspace_path(record.workspace_id)
+            ws_path.mkdir(parents=True, exist_ok=True, mode=0o700)
+            record.status, record.last_activity = "recovered", now()
+            tx.computer_sessions.save(record)
+            tx.log("computer_session_recovered", actor=agent_id, session_id=record.id)
+            return record
+
+    def handoff_computer(
+        self,
+        agent_id: str,
+        target_agent_id: str,
+        session_id: str,
+        *,
+        task_id: str | None = None,
+        summary: str = "computer session handoff",
+    ) -> Handoff:
+        with self.store.transaction() as tx:
+            record = tx.computer_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            tx.agents.get(target_agent_id)
+            token = f"token-computer-{uid()[:8]}"
+            record.status, record.handoff_token, record.last_activity = (
+                "handoff",
+                token,
+                now(),
+            )
+            tx.computer_sessions.save(record)
+            handoff = Handoff(
+                from_agent_id=agent_id,
+                to_agent_id=target_agent_id,
+                task_id=task_id,
+                summary=summary,
+                artifacts=[f"session:{record.id}", f"token:{token}"],
+            )
+            tx.handoffs.add(handoff)
+            tx.log(
+                "computer_session_handoff",
+                actor=agent_id,
+                target_agent_id=target_agent_id,
+                session_id=record.id,
+                handoff_id=handoff.id,
+            )
+            return handoff
+
     def prepare_browser(
-        self, agent_id: str, workspace_id: str, *, memory_limit_mb=512
+        self, agent_id: str, workspace_id: str, *, memory_limit_mb=512, max_tabs=1
     ) -> BrowserSession:
         self._assert_owner(agent_id, workspace_id)
         record = BrowserSession(
-            agent_id=agent_id, workspace_id=workspace_id, memory_limit_mb=memory_limit_mb
+            agent_id=agent_id,
+            workspace_id=workspace_id,
+            memory_limit_mb=memory_limit_mb,
+            max_tabs=max_tabs,
         )
         return self._add("browser_sessions", record, "browser_session_prepared")
+
+    def activate_browser(self, agent_id: str, session_id: str) -> BrowserSession:
+        with self.store.transaction() as tx:
+            record = tx.browser_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            record.status, record.last_activity = "active", now()
+            tx.browser_sessions.save(record)
+            tx.log("browser_session_activated", actor=agent_id, session_id=record.id)
+            return record
+
+    def snapshot_browser(
+        self, agent_id: str, session_id: str, snapshot_name: str | None = None
+    ) -> BrowserSession:
+        with self.store.transaction() as tx:
+            record = tx.browser_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            ws_path = self.workspace_path(record.workspace_id)
+            ws = Workspace(ws_path)
+            s_name = snapshot_name or f"browser-snap-{record.id[:8]}"
+            snap_dir = ws.snapshot(s_name)
+            record.snapshot_path = str(snap_dir)
+            record.status, record.last_activity = "snapshot", now()
+            tx.browser_sessions.save(record)
+            tx.log(
+                "browser_session_snapshotted",
+                actor=agent_id,
+                session_id=record.id,
+                snapshot_path=str(snap_dir),
+            )
+            return record
+
+    def reset_browser(
+        self, agent_id: str, session_id: str, snapshot_name: str | None = None
+    ) -> BrowserSession:
+        with self.store.transaction() as tx:
+            record = tx.browser_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            ws_path = self.workspace_path(record.workspace_id)
+            ws = Workspace(ws_path)
+            s_name = snapshot_name or f"browser-snap-{record.id[:8]}"
+            try:
+                ws.restore(s_name)
+            except FileNotFoundError:
+                pass
+            record.current_url = None
+            record.active_tab_count = 1
+            record.status, record.last_activity = "reset", now()
+            tx.browser_sessions.save(record)
+            tx.log("browser_session_reset", actor=agent_id, session_id=record.id)
+            return record
+
+    def recover_browser(self, agent_id: str, session_id: str) -> BrowserSession:
+        with self.store.transaction() as tx:
+            record = tx.browser_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            record.active_tab_count = 1
+            record.status, record.last_activity = "recovered", now()
+            tx.browser_sessions.save(record)
+            tx.log("browser_session_recovered", actor=agent_id, session_id=record.id)
+            return record
+
+    def handoff_browser(
+        self,
+        agent_id: str,
+        target_agent_id: str,
+        session_id: str,
+        *,
+        task_id: str | None = None,
+        summary: str = "browser session handoff",
+    ) -> Handoff:
+        with self.store.transaction() as tx:
+            record = tx.browser_sessions.get(session_id)
+            self._assert_owner(agent_id, record.workspace_id)
+            tx.agents.get(target_agent_id)
+            token = f"token-browser-{uid()[:8]}"
+            record.status, record.handoff_token, record.last_activity = (
+                "handoff",
+                token,
+                now(),
+            )
+            tx.browser_sessions.save(record)
+            handoff = Handoff(
+                from_agent_id=agent_id,
+                to_agent_id=target_agent_id,
+                task_id=task_id,
+                summary=summary,
+                artifacts=[f"session:{record.id}", f"token:{token}"],
+            )
+            tx.handoffs.add(handoff)
+            tx.log(
+                "browser_session_handoff",
+                actor=agent_id,
+                target_agent_id=target_agent_id,
+                session_id=record.id,
+                handoff_id=handoff.id,
+            )
+            return handoff
 
     def close(self, table: str, session_id: str) -> None:
         if table not in {"workspace_sessions", "computer_sessions", "browser_sessions"}:

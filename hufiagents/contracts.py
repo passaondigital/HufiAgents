@@ -105,6 +105,46 @@ class Agent(Contract):
     archived_at: datetime | None = None
 
 
+class AgentProfileHistory(Contract):
+    id: str = Field(default_factory=uid)
+    agent_id: str
+    version: int = Field(1, ge=1)
+    changed_at: datetime = Field(default_factory=now)
+    changed_by: str = "system"
+    summary: str = Field(default="", max_length=2000)
+    changes: dict[str, Any] = Field(default_factory=dict)
+    snapshot: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentProvisioningRequest(Contract):
+    agent_id: str | None = None
+    display_name: str = Field(min_length=1, max_length=200)
+    role: str = Field(min_length=1, max_length=200)
+    description: str = Field(default="", max_length=4000)
+    mission: str = Field(default="", max_length=4000)
+
+    team_ids: list[str] = Field(default_factory=list)
+    project_ids: list[str] = Field(default_factory=list)
+    skill_ids: list[str] = Field(default_factory=list)
+    memory_scopes: list[str] = Field(default_factory=list)
+    routine_ids: list[str] = Field(default_factory=list)
+
+    capabilities: dict[str, Any] = Field(default_factory=dict)
+    risk_ceiling: Risk = Risk.R1
+
+    model_policy: dict[str, Any] = Field(
+        default_factory=lambda: {"preferred": "local", "external_fallback": False}
+    )
+    model_preference: str | None = None
+    external_budget: int = Field(0, ge=0)
+
+    reviewer_agent_id: str | None = None
+    participation_mode: Literal["ACTIVE", "LISTENING", "SLEEPING"] = "ACTIVE"
+
+    source: str = "pascal"
+    idempotency_key: str | None = None
+
+
 class Channel(Contract):
     id: str = Field(default_factory=uid)
     name: str = Field(min_length=1, max_length=200)
@@ -189,8 +229,12 @@ class ComputerSession(Contract):
     id: str = Field(default_factory=uid)
     agent_id: str
     workspace_id: str
-    status: Literal["prepared", "active", "closed", "expired"] = "prepared"
+    status: Literal[
+        "prepared", "active", "closed", "expired", "snapshot", "reset", "recovered", "handoff"
+    ] = "prepared"
     persistence_policy: Literal["restart", "ephemeral"] = "ephemeral"
+    snapshot_path: str | None = None
+    handoff_token: str | None = None
     created_at: datetime = Field(default_factory=now)
     last_activity: datetime = Field(default_factory=now)
 
@@ -199,10 +243,16 @@ class BrowserSession(Contract):
     id: str = Field(default_factory=uid)
     agent_id: str
     workspace_id: str
-    status: Literal["prepared", "active", "closed", "expired"] = "prepared"
+    status: Literal[
+        "prepared", "active", "closed", "expired", "snapshot", "reset", "recovered", "handoff"
+    ] = "prepared"
     persistence_policy: Literal["restart", "ephemeral"] = "ephemeral"
     max_tabs: int = Field(1, ge=0, le=8)
     memory_limit_mb: int = Field(512, ge=64, le=2048)
+    current_url: str | None = None
+    active_tab_count: int = 1
+    snapshot_path: str | None = None
+    handoff_token: str | None = None
     created_at: datetime = Field(default_factory=now)
     last_activity: datetime = Field(default_factory=now)
 
@@ -230,17 +280,46 @@ class AgentConnectorAccess(Contract):
     connector_id: str
     capabilities: list[str] = Field(default_factory=list)
     modes: list[Literal["read", "write"]] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
     risk_ceiling: Risk = Risk.R1
     status: Literal["active", "disabled", "revoked"] = "active"
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
 
 
+class MCPServerRegistration(Contract):
+    id: str = Field(default_factory=uid)
+    name: str = Field(min_length=1, max_length=100)
+    version: str = Field(default="1.0", min_length=1, max_length=100)
+    transport: Literal["stdio", "http_sse"] = "stdio"
+    command_or_url: str = Field(min_length=1, max_length=1000)
+    args: list[str] = Field(default_factory=list)
+    env_keys: list[str] = Field(default_factory=list)
+    capabilities: list[str] = Field(default_factory=list)
+    risk_mapping: dict[str, str] = Field(default_factory=dict)
+    status: Literal["active", "disabled", "error"] = "active"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+
+
+class MCPToolDefinition(Contract):
+    id: str = Field(default_factory=uid)
+    server_id: str
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    input_schema: dict[str, Any] = Field(default_factory=dict)
+    output_schema: dict[str, Any] = Field(default_factory=dict)
+    risk_ceiling: Risk = Risk.R1
+    required_scopes: list[str] = Field(default_factory=list)
+    status: Literal["active", "disabled"] = "active"
+    created_at: datetime = Field(default_factory=now)
+
+
 class Handoff(Contract):
     id: str = Field(default_factory=uid)
     from_agent_id: str
     to_agent_id: str
-    task_id: str
+    task_id: str | None = None
     summary: str
     artifacts: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=now)
@@ -248,7 +327,7 @@ class Handoff(Contract):
 
 class ToolCall(Contract):
     id: str = Field(default_factory=uid)
-    task_id: str
+    task_id: str | None = None
     tool: str
     action: str
     target: str
@@ -387,6 +466,52 @@ class ChatRoom(Contract):
     archived_at: datetime | None = None
 
 
+class RoomMessage(Contract):
+    """A persistent, redacted message posted to a team room.
+
+    ``mention_agent_ids`` carries the resolved IDs of any @mentions found in
+    the raw content *before* redaction; they are used by the dispatch bridge to
+    fan-out tasks to the correct agents.  ``content`` is always stored in its
+    redacted form.
+    """
+
+    id: str = Field(default_factory=uid)
+    room_id: str
+    sender_type: Literal["user", "agent", "system"] = "user"
+    sender_id: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=32000)
+    mention_agent_ids: list[str] = Field(default_factory=list)
+    mission_id: str | None = None
+    task_id: str | None = None
+    parent_message_id: str | None = None
+    created_at: datetime = Field(default_factory=now)
+    status: Literal["visible", "redacted", "deleted"] = "visible"
+
+
+class RoomParticipant(Contract):
+    """Tracks an agent's membership and participation state in a room.
+
+    Participation states (execution-only; NOT authorization):
+
+    * ``active``    – eligible for normal policy-driven dispatch.
+    * ``listening`` – observes the room; executes only if explicitly @mentioned
+                      or a policy allows it.
+    * ``sleeping``  – not auto-dispatched; must be @mentioned explicitly.
+    * ``left``      – no longer a room member; not eligible for dispatch.
+
+    Changing a participation state NEVER raises risk ceilings, capabilities,
+    connector scopes, or credential rights.  Those are governed entirely by the
+    agent's own policy and the existing Orchestrator/Risk engine.
+    """
+
+    id: str = Field(default_factory=uid)
+    room_id: str
+    agent_id: str
+    participation_state: Literal["active", "listening", "sleeping", "left"] = "active"
+    joined_at: datetime = Field(default_factory=now)
+    left_at: datetime | None = None
+
+
 class CredentialRef(Contract):
     """Metadata-only credential handle; plaintext values never enter this model."""
 
@@ -424,7 +549,7 @@ class Skill(Contract):
 
 class ScopedMemory(Contract):
     id: str = Field(default_factory=uid)
-    scope_type: Literal["user", "global", "agent", "project", "mission", "shared"]
+    scope_type: Literal["user", "global", "agent", "project", "mission", "shared", "team"]
     scope_id: str | None = None
     category: str = "general"
     summary: str
@@ -432,6 +557,7 @@ class ScopedMemory(Contract):
     importance: float = Field(0.5, ge=0, le=1)
     confidence: float = Field(0.5, ge=0, le=1)
     source: str = "manual"
+    status: Literal["approved", "draft", "archived"] = "approved"
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
     last_used_at: datetime | None = None

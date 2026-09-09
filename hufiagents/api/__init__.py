@@ -2,6 +2,7 @@ import fcntl
 import hmac
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit
 
 import httpx
@@ -13,14 +14,34 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from hufiagents import auth
 from hufiagents.api.org import router_for as org_router_for
+from hufiagents.api.rooms import router_for as rooms_router_for
+from hufiagents.browser import BrowserAutomationService
 from hufiagents.config import Settings
-from hufiagents.contracts import Agent, AgentMessage, Routine, ScopedMemory, Skill, WorkEvidence
+from hufiagents.contracts import (
+    Agent,
+    AgentConnectorAccess,
+    AgentMessage,
+    AgentProvisioningRequest,
+    MCPServerRegistration,
+    MCPToolDefinition,
+    Routine,
+    ScopedMemory,
+    Skill,
+    WorkEvidence,
+)
+from hufiagents.evidence import get_agent_activity, get_mission_execution_feed
 from hufiagents.knowledge import KnowledgeService
+from hufiagents.mcp import MCPAdapter
 from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
+from hufiagents.room_runtime import RoomMessageService
+from hufiagents.routine_runtime import RoutineScheduler
+from hufiagents.workforce.builder import WorkforceBuilder
+from hufiagents.workforce.connectors import ConnectorRegistry
 from hufiagents.workforce.routines import RoutineService
+from hufiagents.workforce.sessions import SessionService
 from hufiagents.workforce.team import HufManagerTeamMission
 
 PUBLIC_PATHS = {"/health", "/login"}
@@ -28,6 +49,56 @@ PUBLIC_PATHS = {"/health", "/login"}
 
 class Resolution(BaseModel):
     note: str = Field("", max_length=2000)
+
+
+class BrowserNavigateRequest(BaseModel):
+    agent_id: str
+    session_id: str
+    url: str
+    task_id: str | None = None
+    mission_id: str | None = None
+
+
+class BrowserScreenshotRequest(BaseModel):
+    agent_id: str
+    session_id: str
+    label: str = "screenshot"
+    task_id: str | None = None
+    mission_id: str | None = None
+
+
+class BrowserInteractRequest(BaseModel):
+    agent_id: str
+    session_id: str
+    action: str
+    selector: str = ""
+    value: str = ""
+    task_id: str | None = None
+    mission_id: str | None = None
+
+
+class SessionHandoffRequest(BaseModel):
+    agent_id: str
+    target_agent_id: str
+    session_id: str
+    task_id: str | None = None
+    summary: str = "session handoff"
+
+
+class MCPInvokeRequest(BaseModel):
+    agent_id: str
+    tool_name: str
+    params: dict = Field(default_factory=dict)
+    task_id: str | None = None
+    mission_id: str | None = None
+
+
+class ConnectorCheckRequest(BaseModel):
+    agent_id: str
+    connector_id: str
+    capability: str
+    mode: str = "read"
+    required_scope: str | None = None
 
 
 class LoginRequest(BaseModel):
@@ -130,9 +201,21 @@ def create_app(settings=None, providers=None):
             store = Store(settings.database_url)
             engine = Orchestrator(store, settings, providers)
             app.state.store, app.state.engine = store, engine
+            room_svc = RoomMessageService(store, engine)
+            app.state.room_message_service = room_svc
+            engine.room_service = room_svc
+            routine_svc = RoutineService(store, engine.submit)
+            app.state.routine_service = routine_svc
+            routine_scheduler = RoutineScheduler(
+                routine_svc, settings.routine_poll_interval_seconds
+            )
+            app.state.routine_scheduler = routine_scheduler
             await engine.start()
+            await routine_scheduler.start()
             yield
         finally:
+            if "routine_scheduler" in locals() and routine_scheduler:
+                await routine_scheduler.stop()
             if engine:
                 await engine.stop()
             if store:
@@ -141,7 +224,9 @@ def create_app(settings=None, providers=None):
                 lock.close()
 
     app = FastAPI(title="HufiAgents Core V1", lifespan=lifespan)
+    app.state.store = Store(settings.database_url)
     app.include_router(org_router_for(app))
+    app.include_router(rooms_router_for(app))
     allowed_hosts = ["127.0.0.1", "localhost", "testserver"]
     if settings.public_hostname:
         allowed_hosts.append(settings.public_hostname)
@@ -347,7 +432,11 @@ def create_app(settings=None, providers=None):
         return app.state.engine.workforce.receive_agent_result(identifier, **body.model_dump())
 
     def routines_service():
-        return RoutineService(app.state.store, app.state.engine.submit)
+        return getattr(
+            app.state,
+            "routine_service",
+            RoutineService(app.state.store, app.state.engine.submit),
+        )
 
     @app.get("/routines")
     async def routines(owner_agent_id: str | None = None):
@@ -359,6 +448,18 @@ def create_app(settings=None, providers=None):
     @app.post("/routines", status_code=201)
     async def create_routine(body: RoutineCreate):
         return routines_service().create(Routine(**body.model_dump()))
+
+    @app.post("/routines/runtime/tick")
+    async def routines_runtime_tick():
+        dispatched = routines_service().tick()
+        return {"dispatched": dispatched, "count": len(dispatched)}
+
+    @app.get("/routines/runtime/status")
+    async def routines_runtime_status():
+        scheduler = getattr(app.state, "routine_scheduler", None)
+        if scheduler:
+            return scheduler.status
+        return {"running": False, "status": "no_scheduler"}
 
     @app.patch("/routines/{identifier}")
     async def update_routine(identifier: str, body: RoutineUpdate):
@@ -531,6 +632,26 @@ def create_app(settings=None, providers=None):
         with app.state.store.transaction() as tx:
             return tx.work_evidence.get(identifier)
 
+    @app.get("/missions/{mission_id}/execution")
+    async def mission_execution_feed(
+        request: Request,
+        mission_id: str,
+        mode: Literal["simple", "transparent", "live"] = "transparent",
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+    ):
+        with request.app.state.store.transaction() as tx:
+            return get_mission_execution_feed(tx, mission_id, mode=mode, limit=limit, offset=offset)
+
+    @app.get("/agents/{agent_id}/activity")
+    async def agent_activity_feed(
+        request: Request,
+        agent_id: str,
+        limit: int = Query(20, ge=1, le=100),
+    ):
+        with request.app.state.store.transaction() as tx:
+            return get_agent_activity(tx, agent_id, limit=limit)
+
     @app.get("/reviews")
     async def reviews(task_id: str):
         with app.state.store.transaction() as tx:
@@ -622,5 +743,224 @@ def create_app(settings=None, providers=None):
                 "team_filter": team_id,
                 "source": "persisted_records",
             }
+
+    # -----------------------------------------------------------------------
+    # Workforce Builder endpoints
+    # -----------------------------------------------------------------------
+
+    class ProfileUpdate(BaseModel):
+        changes: dict = Field(default_factory=dict)
+        actor: str = Field("system", max_length=200)
+        summary: str = Field("", max_length=2000)
+
+    @app.post("/workforce/provision", status_code=201)
+    async def provision_agent(
+        request: AgentProvisioningRequest,
+        x_caller_agent_id: str = Header(default="system"),
+    ):
+        """Provision a new digital employee from a structured request.
+
+        Enforces privilege isolation: provisioned agent capabilities and risk
+        ceiling cannot exceed the caller's own ceiling.  Raw secret values are
+        rejected at the boundary.
+        """
+        store = app.state.store
+
+        # Resolve caller capabilities / ceiling from existing agent record, or
+        # fall back to an empty / R0 context so callers cannot self-escalate.
+        caller_caps: dict = {}
+        from hufiagents.contracts import Risk
+
+        caller_ceiling: Risk = Risk.R1
+        try:
+            with store.transaction() as tx:
+                caller = tx.agents.get(x_caller_agent_id)
+                caller_caps = caller.capabilities
+                caller_ceiling = caller.risk_ceiling
+        except KeyError:
+            pass  # Unknown caller → empty caps, R1 default
+
+        builder = WorkforceBuilder(store)
+        try:
+            agent = builder.provision(
+                request,
+                caller_capabilities=caller_caps,
+                caller_risk_ceiling=caller_ceiling,
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+        return agent
+
+    @app.patch("/workforce/agents/{agent_id}/profile")
+    async def update_agent_profile(agent_id: str, body: ProfileUpdate):
+        """Apply profile changes to an existing agent (immutable fields are protected)."""
+        store = app.state.store
+        builder = WorkforceBuilder(store)
+        try:
+            agent = builder.update_profile(
+                agent_id,
+                body.changes,
+                actor=body.actor,
+                summary=body.summary,
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found.") from None
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from None
+        return agent
+
+    @app.get("/workforce/agents/{agent_id}/profile-history")
+    async def get_agent_profile_history(agent_id: str):
+        """Return the full profile version history for an agent."""
+        store = app.state.store
+        builder = WorkforceBuilder(store)
+        try:
+            history = builder.get_profile_history(agent_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Agent '{agent_id}' not found.") from None
+        return {"agent_id": agent_id, "history": history, "count": len(history)}
+
+    def sessions_svc():
+        return SessionService(app.state.store, settings.workspace_root)
+
+    def browser_svc():
+        return BrowserAutomationService(app.state.store, sessions_svc())
+
+    def mcp_svc():
+        return MCPAdapter(app.state.store)
+
+    def connectors_svc():
+        return ConnectorRegistry(app.state.store)
+
+    @app.post("/sessions/computer/{identifier}/activate")
+    async def activate_computer(identifier: str, agent_id: str):
+        return sessions_svc().activate_computer(agent_id, identifier)
+
+    @app.post("/sessions/computer/{identifier}/snapshot")
+    async def snapshot_computer(identifier: str, agent_id: str, snapshot_name: str | None = None):
+        return sessions_svc().snapshot_computer(agent_id, identifier, snapshot_name)
+
+    @app.post("/sessions/computer/{identifier}/reset")
+    async def reset_computer(identifier: str, agent_id: str, snapshot_name: str | None = None):
+        return sessions_svc().reset_computer(agent_id, identifier, snapshot_name)
+
+    @app.post("/sessions/computer/{identifier}/recover")
+    async def recover_computer(identifier: str, agent_id: str):
+        return sessions_svc().recover_computer(agent_id, identifier)
+
+    @app.post("/sessions/computer/{identifier}/handoff")
+    async def handoff_computer(identifier: str, body: SessionHandoffRequest):
+        return sessions_svc().handoff_computer(
+            body.agent_id,
+            body.target_agent_id,
+            identifier,
+            task_id=body.task_id,
+            summary=body.summary,
+        )
+
+    @app.post("/sessions/browser/{identifier}/activate")
+    async def activate_browser(identifier: str, agent_id: str):
+        return sessions_svc().activate_browser(agent_id, identifier)
+
+    @app.post("/sessions/browser/{identifier}/snapshot")
+    async def snapshot_browser(identifier: str, agent_id: str, snapshot_name: str | None = None):
+        return sessions_svc().snapshot_browser(agent_id, identifier, snapshot_name)
+
+    @app.post("/sessions/browser/{identifier}/reset")
+    async def reset_browser(identifier: str, agent_id: str, snapshot_name: str | None = None):
+        return sessions_svc().reset_browser(agent_id, identifier, snapshot_name)
+
+    @app.post("/sessions/browser/{identifier}/recover")
+    async def recover_browser(identifier: str, agent_id: str):
+        return sessions_svc().recover_browser(agent_id, identifier)
+
+    @app.post("/sessions/browser/{identifier}/handoff")
+    async def handoff_browser(identifier: str, body: SessionHandoffRequest):
+        return sessions_svc().handoff_browser(
+            body.agent_id,
+            body.target_agent_id,
+            identifier,
+            task_id=body.task_id,
+            summary=body.summary,
+        )
+
+    @app.post("/browser/navigate", status_code=201)
+    async def browser_navigate(body: BrowserNavigateRequest):
+        return browser_svc().navigate(
+            body.agent_id,
+            body.session_id,
+            body.url,
+            task_id=body.task_id,
+            mission_id=body.mission_id,
+        )
+
+    @app.post("/browser/screenshot", status_code=201)
+    async def browser_screenshot(body: BrowserScreenshotRequest):
+        return browser_svc().take_screenshot(
+            body.agent_id,
+            body.session_id,
+            body.label,
+            task_id=body.task_id,
+            mission_id=body.mission_id,
+        )
+
+    @app.post("/browser/interact", status_code=201)
+    async def browser_interact(body: BrowserInteractRequest):
+        return browser_svc().interact(
+            body.agent_id,
+            body.session_id,
+            body.action,
+            body.selector,
+            body.value,
+            task_id=body.task_id,
+            mission_id=body.mission_id,
+        )
+
+    @app.post("/mcp/servers", status_code=201)
+    async def register_mcp_server(body: MCPServerRegistration):
+        return mcp_svc().register_server(body)
+
+    @app.get("/mcp/servers")
+    async def list_mcp_servers():
+        with app.state.store.transaction() as tx:
+            return tx.mcp_servers.list()
+
+    @app.post("/mcp/tools", status_code=201)
+    async def register_mcp_tool(body: MCPToolDefinition):
+        return mcp_svc().register_tool(body)
+
+    @app.get("/mcp/tools")
+    async def list_mcp_tools(server_id: str | None = None):
+        with app.state.store.transaction() as tx:
+            return tx.mcp_tools.list(**({"server_id": server_id} if server_id else {}))
+
+    @app.post("/mcp/invoke", status_code=201)
+    async def invoke_mcp_tool(body: MCPInvokeRequest):
+        return mcp_svc().invoke_tool(
+            body.agent_id,
+            body.tool_name,
+            body.params,
+            task_id=body.task_id,
+            mission_id=body.mission_id,
+        )
+
+    @app.post("/connectors/grant", status_code=201)
+    async def grant_connector_access(body: AgentConnectorAccess):
+        return connectors_svc().grant(body)
+
+    @app.post("/connectors/check")
+    async def check_connector_access(body: ConnectorCheckRequest):
+        allowed = connectors_svc().check_access(
+            body.agent_id,
+            body.connector_id,
+            body.capability,
+            mode=body.mode,
+            required_scope=body.required_scope,
+        )
+        return {"status": "ok", "allowed": allowed}
 
     return app

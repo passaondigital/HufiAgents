@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3:8b"
     max_concurrent_tasks: int = Field(2, ge=1, le=8)
     poll_interval_seconds: float = Field(0.1, gt=0, le=5)
+    routine_poll_interval_seconds: float = Field(30.0, gt=0, le=600)
     max_pending_tasks: int = Field(100, ge=1, le=10000)
     heartbeat_timeout_seconds: float = Field(120, gt=0)
     heartbeat_interval_seconds: float = Field(30, gt=0)
@@ -57,6 +58,10 @@ class Settings(BaseSettings):
     # Empty (default) keeps the existing 127.0.0.1/localhost/testserver-only
     # allowlist, so nothing changes for local dev or the test suite.
     public_hostname: str = ""
+    # V1.3 Browser configuration. browser_allow_localhost is False in production
+    # to protect against SSRF; test fixtures explicitly enable it for local test servers.
+    browser_headless: bool = True
+    browser_allow_localhost: bool = False
 
     @model_validator(mode="after")
     def heartbeat_order(self):

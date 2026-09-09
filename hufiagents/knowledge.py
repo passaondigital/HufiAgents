@@ -1,5 +1,4 @@
-"""Persistent V1.2 skills, scoped memory, context assembly and learning."""
-
+import re
 from collections.abc import Iterable
 
 from hufiagents.contracts import LearningRecord, ScopedMemory, Skill, now
@@ -23,22 +22,44 @@ class KnowledgeService:
             tx.log("skill_created", actor=actor, skill_id=skill.id, name=skill.name)
         return skill
 
-    def select_skills(self, query: str, *, scope_ids=(), limit=5):
-        words = set(query.lower().split())
+    def select_skills(
+        self,
+        query: str,
+        *,
+        scope_ids: Iterable[str | None] = (),
+        agent_skill_names: Iterable[str] = (),
+        limit: int = 5,
+    ) -> list[Skill]:
+        words = set(re.findall(r"\w+", query.lower()))
+        assigned_names = set(agent_skill_names)
+        scope_set = {s for s in scope_ids if s is not None}
         with self.store.transaction() as tx:
-            items = [
-                s
-                for s in tx.skills.list(status="approved", limit=10000)
-                if s.scope_type == "global" or s.scope_id in set(scope_ids)
+            all_skills = [
+                s for s in tx.skills.list(status="approved", limit=10000) if s.status == "approved"
             ]
+            items = []
+            for s in all_skills:
+                is_assigned = (
+                    s.name in assigned_names
+                    or s.id in assigned_names
+                    or (s.scope_type == "agent" and s.scope_id in scope_set)
+                )
+                is_in_scope = s.scope_type == "global" or s.scope_id in scope_set
+                if is_assigned or is_in_scope:
+                    s_words = set(re.findall(r"\w+", f"{s.name} {s.description}".lower()))
+                    overlap = len(words & s_words)
+                    if is_assigned or overlap > 0 or not words:
+                        items.append((s, overlap, is_assigned))
+
             items.sort(
-                key=lambda s: (
-                    len(words & set((s.name + " " + s.description).lower().split())),
-                    s.updated_at,
+                key=lambda item: (
+                    item[2],  # is_assigned first
+                    item[1],  # word overlap
+                    item[0].updated_at,
                 ),
                 reverse=True,
             )
-            chosen = items[:limit]
+            chosen = [item[0] for item in items[:limit]]
             for skill in chosen:
                 skill.last_used_at = now()
                 skill.success_count += 1
@@ -61,30 +82,51 @@ class KnowledgeService:
             )
         return safe
 
-    def relevant_memories(self, query: str, *, scopes: Iterable[tuple[str, str | None]], limit=10):
+    def relevant_memories(
+        self,
+        query: str,
+        *,
+        scopes: Iterable[tuple[str, str | None]],
+        limit: int = 10,
+    ) -> list[ScopedMemory]:
         allowed = set(scopes)
-        words = set(query.lower().split())
+        words = set(re.findall(r"[a-zA-Z0-9]+", query.lower()))
         with self.store.transaction() as tx:
             rows = [
                 m
                 for m in tx.scoped_memories.list(limit=10000)
-                if (m.scope_type, m.scope_id) in allowed
-                or (m.scope_type == "shared" and (m.scope_type, m.scope_id) in allowed)
+                if getattr(m, "status", "approved") == "approved"
+                and (
+                    (m.scope_type, m.scope_id) in allowed
+                    or (m.scope_type == "global" and ("global", None) in allowed)
+                    or (m.scope_type == "shared" and any(st == "shared" for st, _ in allowed))
+                )
             ]
-            rows.sort(
-                key=lambda m: (
-                    len(words & set((m.summary + " " + m.content).lower().split())),
-                    m.importance,
-                    m.updated_at,
+            scored = []
+            for m in rows:
+                score_text = f"{m.summary} {m.content} {m.category}".lower()
+                m_words = set(re.findall(r"[a-zA-Z0-9]+", score_text))
+                overlap = len(words & m_words)
+                q = query.strip().lower()
+                exact_match = 10 if q and q in score_text else 0
+                total_score = overlap + exact_match
+                if not words or total_score > 0:
+                    scored.append((m, total_score))
+
+            scored.sort(
+                key=lambda item: (
+                    item[1],  # overlap score + exact match
+                    item[0].importance,
+                    item[0].updated_at,
                 ),
                 reverse=True,
             )
-            rows = rows[:limit]
-            for m in rows:
+            chosen = [item[0] for item in scored[:limit]]
+            for m in chosen:
                 m.last_used_at = now()
                 tx.scoped_memories.save(m)
                 tx.log("memory_read", actor="system", memory_id=m.id, scope_type=m.scope_type)
-            return rows
+            return chosen
 
     def assemble_context(
         self,
@@ -92,14 +134,19 @@ class KnowledgeService:
         *,
         scopes=(),
         agent_id=None,
+        agent_skill_names=(),
         max_memory_items=10,
         max_skill_items=5,
         max_context_chars=12000,
         max_context_tokens_estimate=3000,
     ):
         memories = self.relevant_memories(intent, scopes=scopes, limit=max_memory_items)
+        scope_ids = [sid for _, sid in scopes if sid is not None]
         skills = self.select_skills(
-            intent, scope_ids=[sid for _, sid in scopes], limit=max_skill_items
+            intent,
+            scope_ids=scope_ids,
+            agent_skill_names=agent_skill_names,
+            limit=max_skill_items,
         )
         parts = ["MISSION: " + intent]
         if memories:
@@ -122,6 +169,8 @@ class KnowledgeService:
                 )
         return {
             "text": text,
+            "memories": memories,
+            "skills": skills,
             "memory_ids": [m.id for m in memories],
             "skill_ids": [s.id for s in skills],
             "compacted": compacted,

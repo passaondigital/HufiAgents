@@ -3,7 +3,9 @@ import contextlib
 import json
 from datetime import timedelta
 
+from hufiagents.browser_worker import BrowserWorker
 from hufiagents.contracts import Handoff, MemoryRecord, State, now
+from hufiagents.knowledge import KnowledgeService
 from hufiagents.orchestrator.planner import Planner
 from hufiagents.orchestrator.registry import AgentRegistry
 from hufiagents.orchestrator.reviewer import Reviewer
@@ -17,6 +19,7 @@ from hufiagents.providers.ollama import OllamaProvider
 from hufiagents.providers.router import select_provider
 from hufiagents.redaction import redact
 from hufiagents.risk import Policy
+from hufiagents.tools.browser import BrowserTool
 from hufiagents.tools.files import FilesTool
 from hufiagents.tools.gateway import ApprovalPending, ToolGateway
 from hufiagents.tools.git import GitTool
@@ -31,6 +34,7 @@ class Orchestrator:
         self.registry = AgentRegistry(store)
         self.registry.seed()
         self.workforce = Workforce(store)
+        self.knowledge = KnowledgeService(store)
         self.projects = ProjectRegistry(settings.projects_path)
         self.providers = providers or {
             "fake": FakeProvider(),
@@ -43,12 +47,24 @@ class Orchestrator:
         }
         self.planner, self.reviewer = Planner(), Reviewer()
         self.gateway = ToolGateway(store, Policy(settings.risk_policy_path))
+        self.browser_worker = BrowserWorker(
+            headless=getattr(settings, "browser_headless", True),
+            allow_localhost=getattr(settings, "browser_allow_localhost", False),
+        )
         self.active = {}
         self.semaphore = asyncio.Semaphore(settings.max_concurrent_tasks)
         self.stopping = False
         self.loop_task = None
+        # Populated by the API layer after construction; None in bare unit tests.
+        self.room_service = None
+        # Track which mission IDs have already had their outcome posted to a room.
+        self._room_notified: set = set()
 
     def submit(self, request):
+        if isinstance(request, dict):
+            from hufiagents.orchestrator.planner import MissionCreate
+
+            request = MissionCreate.model_validate(request)
         mission, tasks = self.planner.plan(request)
         # Validate paths and any explicit agent request before persisting or
         # dispatching a task, so a bad request fails at submit time (409) and
@@ -107,6 +123,8 @@ class Orchestrator:
         for runner in pending:
             runner.cancel()
         await asyncio.gather(*pending, return_exceptions=True)
+        if hasattr(self, "browser_worker") and self.browser_worker:
+            await self.browser_worker.close_all()
 
     async def _loop(self):
         while not self.stopping:
@@ -157,6 +175,49 @@ class Orchestrator:
                 if len(self.active) >= self.settings.max_concurrent_tasks:
                     break
                 self.active[task.id] = asyncio.create_task(self.run(task.id))
+        # Fan-in: notify the originating room when a mission reaches a terminal state.
+        # Only fires if a RoomMessageService is registered (i.e., running inside the
+        # full API stack).  Bare unit tests set room_service=None and are unaffected.
+        if self.room_service is not None:
+            self._notify_room_outcomes()
+
+    def _notify_room_outcomes(self):
+        """Scan recently-terminal missions and post results back to their originating room.
+
+        This implements the fan-in path: once every tick, missions that just
+        reached a terminal state (completed/failed/cancelled) and have a
+        ``room_id`` constraint get their result posted as a system message in
+        that room.  The ``_room_notified`` set ensures each mission posts once.
+        """
+        try:
+            with self.store.transaction() as tx:
+                terminal_missions = tx.missions.list(
+                    status=[State.completed, State.failed, State.cancelled],
+                    limit=200,
+                )
+            for mission in terminal_missions:
+                if mission.id in self._room_notified:
+                    continue
+                constraints = mission.constraints or {}
+                if not constraints.get("room_id"):
+                    self._room_notified.add(mission.id)
+                    continue
+                try:
+                    status_str = (
+                        mission.status.value
+                        if hasattr(mission.status, "value")
+                        else str(mission.status)
+                    )
+                    self.room_service.notify_mission_outcome(
+                        mission_id=mission.id,
+                        status=status_str,
+                        result=mission.result or "",
+                    )
+                except Exception:
+                    pass  # never let room notification crash the scheduler
+                self._room_notified.add(mission.id)
+        except Exception:
+            pass  # never let this scan crash the tick loop
 
     async def _heartbeat(self, identifier):
         while True:
@@ -228,15 +289,117 @@ class Orchestrator:
                 with self.store.transaction() as tx:
                     mission = tx.missions.get(task.mission_id)
                     dependency_results = [tx.tasks.get(dep).result for dep in task.dependencies]
-                context = json.dumps(
-                    redact(
-                        {
-                            "constraints": mission.constraints,
-                            "dependency_results": dependency_results,
-                            "review_findings": [r.findings for r in reviews],
-                        }
-                    )
+
+                ENG_TOOLS = {"files", "git", "code", "repo", "terminal", "workspace"}
+                is_engineering = False
+                if agent:
+                    tools = set(agent.capabilities.get("tools", [])) | set(task.allowed_tools)
+                    role = (agent.role or "").lower()
+                    if role in {
+                        "builder",
+                        "reviewer",
+                        "engineer",
+                        "coder",
+                        "architect",
+                        "developer",
+                    } or bool(tools.intersection(ENG_TOOLS)):
+                        is_engineering = True
+                else:
+                    tools = set(task.allowed_tools)
+                    if bool(tools.intersection(ENG_TOOLS)):
+                        is_engineering = True
+
+                repo_ctx = None
+                if is_engineering and workspace.root.exists():
+                    try:
+                        from hufiagents.repo_context import RepoContextService
+
+                        repo_svc = RepoContextService()
+                        ctx_result = repo_svc.assemble_context(workspace.root, task.objective)
+                        if ctx_result and ctx_result.get("selected_files"):
+                            repo_ctx = ctx_result
+                            with self.store.transaction() as tx:
+                                tx.log(
+                                    "repo_context_prepared",
+                                    task=task,
+                                    selected_count=len(repo_ctx.get("selected_files", [])),
+                                    truncated=repo_ctx.get("truncated", False),
+                                )
+                    except Exception:
+                        pass
+
+                # Assemble authorized knowledge scopes
+                scopes = [("agent", agent.id if agent else "builder"), ("global", None)]
+                if task.project_id:
+                    scopes.append(("project", task.project_id))
+                if getattr(agent, "project_id", None) and agent.project_id != task.project_id:
+                    scopes.append(("project", agent.project_id))
+
+                extra_scopes = agent.capabilities.get("memory_scopes", []) if agent else []
+                if isinstance(extra_scopes, str):
+                    extra_scopes = [extra_scopes]
+                for sc in extra_scopes:
+                    if ":" in sc:
+                        stype, sid = sc.split(":", 1)
+                        scopes.append((stype.strip(), sid.strip()))
+                    else:
+                        scopes.append((sc.strip(), None))
+
+                team_ids = agent.capabilities.get("team_ids", []) if agent else []
+                for tid in team_ids:
+                    scopes.append(("team", tid))
+
+                agent_skills = []
+                if agent:
+                    agent_skills.extend(agent.capabilities.get("skills", []))
+                    agent_skills.extend(agent.capabilities.get("skill_ids", []))
+
+                knowledge_res = self.knowledge.assemble_context(
+                    task.objective,
+                    scopes=scopes,
+                    agent_id=agent.id if agent else None,
+                    agent_skill_names=agent_skills,
                 )
+                selected_memories = knowledge_res.get("memories", [])
+                selected_skills = knowledge_res.get("skills", [])
+
+                if selected_memories or selected_skills:
+                    with self.store.transaction() as tx:
+                        tx.log(
+                            "knowledge_context_prepared",
+                            task=task,
+                            memory_count=len(selected_memories),
+                            skill_count=len(selected_skills),
+                            memory_ids=[m.id for m in selected_memories],
+                            skill_ids=[s.id for s in selected_skills],
+                            skill_names=[s.name for s in selected_skills],
+                        )
+
+                context_dict = {
+                    "constraints": mission.constraints,
+                    "dependency_results": dependency_results,
+                    "review_findings": [r.findings for r in reviews],
+                }
+                if selected_skills:
+                    context_dict["approved_skills"] = [
+                        (
+                            f"{s.name}: {s.description} | Instructions: "
+                            + (
+                                "; ".join(str(step) for step in s.steps)
+                                if s.steps
+                                else s.description
+                            )
+                        )
+                        for s in selected_skills
+                    ]
+                if selected_memories:
+                    context_dict["approved_memory"] = [
+                        f"{m.summary}: {m.content}" for m in selected_memories
+                    ]
+                if repo_ctx:
+                    context_dict["repository_context"] = repo_ctx
+
+                context = json.dumps(redact(context_dict))
                 request = CompletionRequest(
                     objective=task.objective, context=context, max_tokens=task.budget_tokens or 512
                 )
@@ -285,6 +448,7 @@ class Orchestrator:
                         artifacts=[artifact],
                     )
                 )
+                tx.log("handoff", task=task, from_agent=agent.id, to_agent="reviewer")
                 tx.transition(task, State.review)
         self.registry.get("reviewer")
         with self.store.transaction() as tx:
@@ -341,6 +505,13 @@ class Orchestrator:
                 base_branch=project.default_branch if project else self.settings.github_base_branch,
                 token=self.settings.github_token.get_secret_value(),
                 dry_run=dry_run,
+            ),
+            "browser": BrowserTool(
+                workspace,
+                self.browser_worker,
+                store=self.store,
+                settings=self.settings,
+                task=task,
             ),
         }
 

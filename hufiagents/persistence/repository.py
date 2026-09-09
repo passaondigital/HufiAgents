@@ -124,6 +124,14 @@ class UnitOfWork:
                 detail=detail,
             )
         )
+        try:
+            from hufiagents.evidence import EvidenceCollector
+
+            EvidenceCollector.process_event(
+                self, event_type, task=task, mission_id=mission_id, actor=actor, detail=detail
+            )
+        except Exception:
+            pass
 
     def transition(self, task, target, *, recovery=False, cancel=False, reason=""):
         validate_transition(task.status, target, recovery=recovery, cancel=cancel)
@@ -244,6 +252,21 @@ class Store:
                     "hufiagents.persistence.migrations.007_skills_memory"
                 ).apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (7)")
+            if 8 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.008_v1_3_workspace_browser_mcp"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (8)")
+            if 9 not in versions:
+                importlib.import_module("hufiagents.persistence.migrations.009_room_runtime").apply(
+                    connection
+                )
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (9)")
+            if 10 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.010_workforce_builder"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (10)")
 
     @contextmanager
     def transaction(self):

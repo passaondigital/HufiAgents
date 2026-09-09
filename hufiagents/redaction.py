@@ -10,7 +10,10 @@ PATTERNS = [
     re.compile(r"(?i)((?:authorization|proxy-authorization)\s*:\s*)[^\r\n]+"),
     re.compile(r"(?i)((?:cookie|set-cookie)\s*:\s*)[^\r\n]+"),
     re.compile(r"(?i)(bearer\s+)[\w.\-]+"),
-    re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|sk-[A-Za-z0-9_-]+)"),
+    re.compile(
+        r"\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|sk-[A-Za-z0-9_-]+|"
+        r"(?:memory|browser|test)-secret-[A-Za-z0-9_-]+)"
+    ),
     # Environment/config and command output key/value forms.  The key is
     # retained for diagnostics, while its value is never persisted.
     re.compile(
