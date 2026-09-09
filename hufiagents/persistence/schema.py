@@ -24,6 +24,8 @@ from hufiagents.contracts import (
     Mission,
     Resource,
     ReviewResult,
+    RoomMessage,
+    RoomParticipant,
     Routine,
     ScopedMemory,
     Skill,
@@ -63,6 +65,8 @@ MODELS = {
     "resources": Resource,
     "relationships": GraphRelationship,
     "chat_rooms": ChatRoom,
+    "room_messages": RoomMessage,
+    "room_participants": RoomParticipant,
     "credential_refs": CredentialRef,
     "skills": Skill,
     "scoped_memories": ScopedMemory,
@@ -93,6 +97,7 @@ JSON_FIELDS = {
     "modes",
     "permissions",
     "risk_mapping",
+    "mention_agent_ids",
 }
 INTEGER_FIELDS = {
     "budget_tokens",

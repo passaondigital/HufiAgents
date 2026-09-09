@@ -13,6 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from hufiagents import auth
 from hufiagents.api.org import router_for as org_router_for
+from hufiagents.api.rooms import router_for as rooms_router_for
 from hufiagents.config import Settings
 from hufiagents.contracts import Agent, AgentMessage, Routine, ScopedMemory, Skill, WorkEvidence
 from hufiagents.knowledge import KnowledgeService
@@ -20,6 +21,7 @@ from hufiagents.orchestrator.engine import Orchestrator
 from hufiagents.orchestrator.planner import MissionCreate
 from hufiagents.persistence.repository import Store
 from hufiagents.projects import ProjectRegistry
+from hufiagents.room_runtime import RoomMessageService
 from hufiagents.workforce.routines import RoutineService
 from hufiagents.workforce.team import HufManagerTeamMission
 
@@ -130,6 +132,9 @@ def create_app(settings=None, providers=None):
             store = Store(settings.database_url)
             engine = Orchestrator(store, settings, providers)
             app.state.store, app.state.engine = store, engine
+            room_svc = RoomMessageService(store, engine)
+            app.state.room_message_service = room_svc
+            engine.room_service = room_svc
             await engine.start()
             yield
         finally:
@@ -142,6 +147,7 @@ def create_app(settings=None, providers=None):
 
     app = FastAPI(title="HufiAgents Core V1", lifespan=lifespan)
     app.include_router(org_router_for(app))
+    app.include_router(rooms_router_for(app))
     allowed_hosts = ["127.0.0.1", "localhost", "testserver"]
     if settings.public_hostname:
         allowed_hosts.append(settings.public_hostname)

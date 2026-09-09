@@ -387,6 +387,52 @@ class ChatRoom(Contract):
     archived_at: datetime | None = None
 
 
+class RoomMessage(Contract):
+    """A persistent, redacted message posted to a team room.
+
+    ``mention_agent_ids`` carries the resolved IDs of any @mentions found in
+    the raw content *before* redaction; they are used by the dispatch bridge to
+    fan-out tasks to the correct agents.  ``content`` is always stored in its
+    redacted form.
+    """
+
+    id: str = Field(default_factory=uid)
+    room_id: str
+    sender_type: Literal["user", "agent", "system"] = "user"
+    sender_id: str = Field(min_length=1, max_length=200)
+    content: str = Field(min_length=1, max_length=32000)
+    mention_agent_ids: list[str] = Field(default_factory=list)
+    mission_id: str | None = None
+    task_id: str | None = None
+    parent_message_id: str | None = None
+    created_at: datetime = Field(default_factory=now)
+    status: Literal["visible", "redacted", "deleted"] = "visible"
+
+
+class RoomParticipant(Contract):
+    """Tracks an agent's membership and participation state in a room.
+
+    Participation states (execution-only; NOT authorization):
+
+    * ``active``    – eligible for normal policy-driven dispatch.
+    * ``listening`` – observes the room; executes only if explicitly @mentioned
+                      or a policy allows it.
+    * ``sleeping``  – not auto-dispatched; must be @mentioned explicitly.
+    * ``left``      – no longer a room member; not eligible for dispatch.
+
+    Changing a participation state NEVER raises risk ceilings, capabilities,
+    connector scopes, or credential rights.  Those are governed entirely by the
+    agent's own policy and the existing Orchestrator/Risk engine.
+    """
+
+    id: str = Field(default_factory=uid)
+    room_id: str
+    agent_id: str
+    participation_state: Literal["active", "listening", "sleeping", "left"] = "active"
+    joined_at: datetime = Field(default_factory=now)
+    left_at: datetime | None = None
+
+
 class CredentialRef(Contract):
     """Metadata-only credential handle; plaintext values never enter this model."""
 

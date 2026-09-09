@@ -47,6 +47,10 @@ class Orchestrator:
         self.semaphore = asyncio.Semaphore(settings.max_concurrent_tasks)
         self.stopping = False
         self.loop_task = None
+        # Populated by the API layer after construction; None in bare unit tests.
+        self.room_service = None
+        # Track which mission IDs have already had their outcome posted to a room.
+        self._room_notified: set = set()
 
     def submit(self, request):
         mission, tasks = self.planner.plan(request)
@@ -157,6 +161,49 @@ class Orchestrator:
                 if len(self.active) >= self.settings.max_concurrent_tasks:
                     break
                 self.active[task.id] = asyncio.create_task(self.run(task.id))
+        # Fan-in: notify the originating room when a mission reaches a terminal state.
+        # Only fires if a RoomMessageService is registered (i.e., running inside the
+        # full API stack).  Bare unit tests set room_service=None and are unaffected.
+        if self.room_service is not None:
+            self._notify_room_outcomes()
+
+    def _notify_room_outcomes(self):
+        """Scan recently-terminal missions and post results back to their originating room.
+
+        This implements the fan-in path: once every tick, missions that just
+        reached a terminal state (completed/failed/cancelled) and have a
+        ``room_id`` constraint get their result posted as a system message in
+        that room.  The ``_room_notified`` set ensures each mission posts once.
+        """
+        try:
+            with self.store.transaction() as tx:
+                terminal_missions = tx.missions.list(
+                    status=[State.completed, State.failed, State.cancelled],
+                    limit=200,
+                )
+            for mission in terminal_missions:
+                if mission.id in self._room_notified:
+                    continue
+                constraints = mission.constraints or {}
+                if not constraints.get("room_id"):
+                    self._room_notified.add(mission.id)
+                    continue
+                try:
+                    status_str = (
+                        mission.status.value
+                        if hasattr(mission.status, "value")
+                        else str(mission.status)
+                    )
+                    self.room_service.notify_mission_outcome(
+                        mission_id=mission.id,
+                        status=status_str,
+                        result=mission.result or "",
+                    )
+                except Exception:
+                    pass  # never let room notification crash the scheduler
+                self._room_notified.add(mission.id)
+        except Exception:
+            pass  # never let this scan crash the tick loop
 
     async def _heartbeat(self, identifier):
         while True:
