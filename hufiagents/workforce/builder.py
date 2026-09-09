@@ -150,16 +150,23 @@ class WorkforceBuilder:
                     "Cannot reprovision with a different role under the same idempotency key."
                 )
 
+            caps = dict(request.capabilities)
+            if request.skill_ids and "skills" not in caps:
+                caps["skills"] = list(request.skill_ids)
+            if request.memory_scopes and "memory_scopes" not in caps:
+                caps["memory_scopes"] = list(request.memory_scopes)
+
             # 6. Construct agent.
             agent = Agent(
                 id=agent_id,
                 name=request.display_name,
                 role=request.role,
                 description=request.description,
-                capabilities=request.capabilities,
+                capabilities=caps,
                 risk_ceiling=request.risk_ceiling,
                 default_risk_ceiling=request.risk_ceiling,
                 model_preference=request.model_preference,
+                memory_scope=request.memory_scopes[0] if request.memory_scopes else "agent",
                 status="active",
             )
 

@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from hufiagents.browser_worker import BrowserWorker
 from hufiagents.contracts import Handoff, MemoryRecord, State, now
+from hufiagents.knowledge import KnowledgeService
 from hufiagents.orchestrator.planner import Planner
 from hufiagents.orchestrator.registry import AgentRegistry
 from hufiagents.orchestrator.reviewer import Reviewer
@@ -33,6 +34,7 @@ class Orchestrator:
         self.registry = AgentRegistry(store)
         self.registry.seed()
         self.workforce = Workforce(store)
+        self.knowledge = KnowledgeService(store)
         self.projects = ProjectRegistry(settings.projects_path)
         self.providers = providers or {
             "fake": FakeProvider(),
@@ -326,11 +328,74 @@ class Orchestrator:
                     except Exception:
                         pass
 
+                # Assemble authorized knowledge scopes
+                scopes = [("agent", agent.id if agent else "builder"), ("global", None)]
+                if task.project_id:
+                    scopes.append(("project", task.project_id))
+                if getattr(agent, "project_id", None) and agent.project_id != task.project_id:
+                    scopes.append(("project", agent.project_id))
+
+                extra_scopes = agent.capabilities.get("memory_scopes", []) if agent else []
+                if isinstance(extra_scopes, str):
+                    extra_scopes = [extra_scopes]
+                for sc in extra_scopes:
+                    if ":" in sc:
+                        stype, sid = sc.split(":", 1)
+                        scopes.append((stype.strip(), sid.strip()))
+                    else:
+                        scopes.append((sc.strip(), None))
+
+                team_ids = agent.capabilities.get("team_ids", []) if agent else []
+                for tid in team_ids:
+                    scopes.append(("team", tid))
+
+                agent_skills = []
+                if agent:
+                    agent_skills.extend(agent.capabilities.get("skills", []))
+                    agent_skills.extend(agent.capabilities.get("skill_ids", []))
+
+                knowledge_res = self.knowledge.assemble_context(
+                    task.objective,
+                    scopes=scopes,
+                    agent_id=agent.id if agent else None,
+                    agent_skill_names=agent_skills,
+                )
+                selected_memories = knowledge_res.get("memories", [])
+                selected_skills = knowledge_res.get("skills", [])
+
+                if selected_memories or selected_skills:
+                    with self.store.transaction() as tx:
+                        tx.log(
+                            "knowledge_context_prepared",
+                            task=task,
+                            memory_count=len(selected_memories),
+                            skill_count=len(selected_skills),
+                            memory_ids=[m.id for m in selected_memories],
+                            skill_ids=[s.id for s in selected_skills],
+                            skill_names=[s.name for s in selected_skills],
+                        )
+
                 context_dict = {
                     "constraints": mission.constraints,
                     "dependency_results": dependency_results,
                     "review_findings": [r.findings for r in reviews],
                 }
+                if selected_skills:
+                    context_dict["approved_skills"] = [
+                        (
+                            f"{s.name}: {s.description} | Instructions: "
+                            + (
+                                "; ".join(str(step) for step in s.steps)
+                                if s.steps
+                                else s.description
+                            )
+                        )
+                        for s in selected_skills
+                    ]
+                if selected_memories:
+                    context_dict["approved_memory"] = [
+                        f"{m.summary}: {m.content}" for m in selected_memories
+                    ]
                 if repo_ctx:
                     context_dict["repository_context"] = repo_ctx
 

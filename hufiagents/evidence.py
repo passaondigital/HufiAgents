@@ -127,6 +127,30 @@ class EvidenceCollector:
             metadata["selected_count"] = count
             metadata["truncated"] = truncated
 
+        # 4b. Knowledge Context Prepared
+        elif event_type == "knowledge_context_prepared":
+            source_type = "KNOWLEDGE"
+            evidence_type = "REUSED"
+            mem_count = detail.get("memory_count", 0)
+            skill_count = detail.get("skill_count", 0)
+            skill_names = detail.get("skill_names", [])
+
+            parts = []
+            if mem_count == 1:
+                parts.append("1 freigegebene Projekterfahrung wiederverwendet")
+            elif mem_count > 1:
+                parts.append(f"{mem_count} freigegebene Erfahrungen wiederverwendet")
+
+            if skill_names:
+                parts.append(f"Skill {skill_names[0]} angewendet")
+            elif skill_count > 0:
+                parts.append(f"{skill_count} Skill(s) angewendet")
+
+            summary = " & ".join(parts) if parts else "Freigegebenes Wissen wiederverwendet"
+            metadata["memory_count"] = mem_count
+            metadata["skill_count"] = skill_count
+            metadata["skill_names"] = skill_names
+
         # 5. Tool Results
         elif event_type == "tool_result":
             tool_call_id = detail.get("tool_call_id")

@@ -549,7 +549,7 @@ class Skill(Contract):
 
 class ScopedMemory(Contract):
     id: str = Field(default_factory=uid)
-    scope_type: Literal["user", "global", "agent", "project", "mission", "shared"]
+    scope_type: Literal["user", "global", "agent", "project", "mission", "shared", "team"]
     scope_id: str | None = None
     category: str = "general"
     summary: str
@@ -557,6 +557,7 @@ class ScopedMemory(Contract):
     importance: float = Field(0.5, ge=0, le=1)
     confidence: float = Field(0.5, ge=0, le=1)
     source: str = "manual"
+    status: Literal["approved", "draft", "archived"] = "approved"
     created_at: datetime = Field(default_factory=now)
     updated_at: datetime = Field(default_factory=now)
     last_used_at: datetime | None = None
