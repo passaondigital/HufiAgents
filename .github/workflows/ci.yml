@@ -3,7 +3,7 @@ on: [push, pull_request]
 jobs:
   core:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -27,6 +27,9 @@ jobs:
           # bwrap in CI; confined to this ephemeral runner VM.
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - run: uv sync --frozen
+      # Install Playwright Chromium so real-browser integration tests can run.
+      # Without this step every branch fails with "Executable doesn't exist".
+      - run: uv run playwright install chromium --with-deps
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pytest -q
