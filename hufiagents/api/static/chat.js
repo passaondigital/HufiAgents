@@ -399,7 +399,13 @@
       });
     } catch (error) {
       const hufiBubble = turnEl.querySelector('.bubble--hufi');
-      hufiBubble.textContent = 'Das hat leider nicht geklappt: ' + Hufi.errors.translate(error.message);
+      const translated = Hufi.errors.translate(error.message);
+      if (translated.startsWith('Das hat leider') || translated.startsWith('Der Auftrag konnte') || translated.startsWith('Der Auftrag war')) {
+        hufiBubble.textContent = translated;
+      } else {
+        hufiBubble.textContent = 'Der Auftrag konnte nicht gestartet werden: ' + translated;
+      }
+      wireDetailsToggle(turnEl, null, error.message);
       return;
     }
 
@@ -407,16 +413,20 @@
     trackMission(mission.id, turnEl);
   }
 
-  function wireDetailsToggle(turnEl, missionId) {
+  function wireDetailsToggle(turnEl, missionId, errorMessage) {
     const toggle = turnEl.querySelector('.details-toggle');
     const panel = turnEl.querySelector('.details-panel');
     const timelineEl = panel.querySelector('.details-timeline');
     toggle.onclick = async () => {
-      if (!missionId) return;
       const opening = panel.hidden;
       panel.hidden = !opening;
       toggle.textContent = opening ? 'Details verbergen' : 'Details anzeigen';
       if (!opening) return;
+      if (!missionId) {
+        timelineEl.innerHTML = `<p class="empty-hint" style="color:var(--text-danger)">${esc(errorMessage || 'Mission konnte nicht gestartet werden.')}</p>`;
+        scrollToBottom();
+        return;
+      }
       timelineEl.innerHTML = '<p class="empty-hint">Lädt …</p>';
       try {
         const events = await Hufi.api(`/audit?mission_id=${encodeURIComponent(missionId)}&limit=100`);

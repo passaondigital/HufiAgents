@@ -43,7 +43,7 @@ class Contract(BaseModel):
 
 class Mission(Contract):
     id: str = Field(default_factory=uid)
-    outcome: str = Field(min_length=1, max_length=16000)
+    outcome: str = Field(min_length=1, max_length=32000)
     constraints: dict[str, Any] = Field(default_factory=dict)
     status: State = State.queued
     risk_ceiling: Risk = Risk.R1
