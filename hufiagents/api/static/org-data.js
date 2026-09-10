@@ -81,12 +81,21 @@
     [/approval resolution disabled/i, 'Freigaben sind in dieser Umgebung noch nicht eingerichtet.'],
     [/owner approval token required/i, 'Dafür fehlt die Berechtigung.'],
     [/authentication required/i, 'Bitte melde dich erneut an.'],
+    [/at most \d+ characters|too long|too large|exceeds maximum|max_length/i, 'Der Auftrag war zu groß für das gewählte Modell.'],
+    [/local router.*unreachable|connection refused|failed to connect/i, 'Das lokale Modell war nicht erreichbar.'],
+    [/no suitable team|team not found/i, 'Kein passendes Team gefunden.'],
+    [/mission.*failed|could not be created|start failed/i, 'Die Mission ist beim Start fehlgeschlagen.'],
   ];
   Hufi.errors = {
     translate(rawMessage) {
-      const raw = String(rawMessage || '');
+      const raw = String(rawMessage || '').trim();
+      if (!raw) return 'Der Auftrag konnte nicht gestartet werden.';
       const hit = KNOWN_ERRORS.find(([pattern]) => pattern.test(raw));
-      return hit ? hit[1] : 'Das hat leider nicht geklappt.';
+      if (hit) return hit[1];
+      if (raw.startsWith('Das hat leider') || raw.startsWith('Der Auftrag konnte')) {
+        return raw;
+      }
+      return 'Der Auftrag konnte nicht gestartet werden.';
     },
   };
 

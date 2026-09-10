@@ -15,7 +15,7 @@ class Operation(Contract):
 
 
 class TaskSpec(Contract):
-    objective: str = Field(min_length=1, max_length=8000)
+    objective: str = Field(min_length=1, max_length=32000)
     expected_output: str = "result.md"
     # `not_refusal` is a default (not opt-in) mechanical check: a model
     # refusal/incident report is non-empty text and would otherwise pass
@@ -56,7 +56,7 @@ class TaskSpec(Contract):
 
 
 class MissionCreate(Contract):
-    outcome: str = Field(min_length=1, max_length=16000)
+    outcome: str = Field(min_length=1, max_length=32000)
     constraints: dict[str, Any] = Field(default_factory=dict)
     # R1 previously meant a mission's *ceiling* could never even reach R2/R3,
     # regardless of what an assigned agent or the workforce/delegation layer
