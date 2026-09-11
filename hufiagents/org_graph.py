@@ -260,6 +260,10 @@ def bootstrap_corporate_matrix(store):
         def ensure_unit(key, name, unit_type, parent=None, responsibilities=()):
             if key in units:
                 return units[key]
+            existing = tx.organization_units.list(stable_key=key, limit=1)
+            if existing:
+                units[key] = existing[0]
+                return existing[0]
             unit = create_org_unit(
                 tx,
                 name,

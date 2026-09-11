@@ -19,6 +19,11 @@ def apply(connection):
     ):
         TABLES[name].create(connection, checkfirst=True)
 
+    connection.exec_driver_sql(
+        "CREATE UNIQUE INDEX IF NOT EXISTS ix_organization_units_stable_key "
+        "ON organization_units (stable_key)"
+    )
+
     existing = set(inspect(connection).get_table_names())
     if "tasks" in existing:
         columns = {row[1] for row in connection.exec_driver_sql("PRAGMA table_info(tasks)")}

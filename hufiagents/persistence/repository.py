@@ -252,13 +252,13 @@ class UnitOfWork:
             deliverables = {item.deliverable_key for item in generated}
             workstreams = {task.workstream_key for task in tasks}
             roles = {task.assigned_agent_id for task in tasks}
-            reviews = self.reviews.list(limit=1000)
             task_by_id = {task.id: task for task in tasks}
+            task_ids = list(task_by_id.keys())
+            reviews = self.reviews.list(task_id=task_ids, limit=1000) if task_ids else []
             independent_reviews = [
                 review
                 for review in reviews
-                if review.task_id in task_by_id
-                and review.verdict == "approve"
+                if review.verdict == "approve"
                 and review.reviewer_agent_id != task_by_id[review.task_id].assigned_agent_id
             ]
             evidence = self.work_evidence.list(mission_id=mission_id, limit=1000)
@@ -268,8 +268,21 @@ class UnitOfWork:
                 and set(contract.required_workstreams) <= workstreams
                 and set(contract.required_roles) <= roles
                 and len(independent_reviews) >= len(tasks)
-                and {task.id for task in tasks} <= evidenced_tasks
+                and set(task_ids) <= evidenced_tasks
             )
+            open_tasks = [t for t in tasks if t.status != State.completed]
+            open_items = [f"Aufgabe '{t.objective}': {t.status}" for t in open_tasks]
+            findings = []
+            for r in reviews:
+                for f in r.findings:
+                    summary = f.get("finding") if isinstance(f, dict) else str(f)
+                    if summary:
+                        findings.append(str(summary))
+            pending_approvals = [
+                a
+                for a in self.approvals.list(limit=1000)
+                if a.task_id in task_by_id and a.status == "pending"
+            ]
             if conditions_met:
                 status = State.completed
                 contract.status = "COMPLETED"
@@ -286,6 +299,9 @@ class UnitOfWork:
                         "evidence": len(evidence),
                         "reviews": len(independent_reviews),
                     },
+                    open_items=open_items,
+                    findings=findings,
+                    decision_required=len(pending_approvals) > 0,
                 )
             else:
                 status = State.blocked

@@ -305,3 +305,140 @@ def test_company_pulse_and_unread_events(store):
         workforce_after = get_company_workforce(tx)
         boss_after = next(w for w in workforce_after["workers"] if w["agent_id"] == "hufiboss")
         assert boss_after["unread_event_count"] == 0
+
+
+def test_review_query_is_scoped_to_mission_tasks(store):
+    from hufiagents.contracts import (
+        Mission,
+        OwnerOutcomeContract,
+        ReviewResult,
+        State,
+        Task,
+        WorkArtifact,
+        WorkEvidence,
+    )
+
+    with store.transaction() as tx:
+        # Create >1000 historical unrelated reviews for older missions
+        old_m = Mission(outcome="Old Mission")
+        tx.missions.add(old_m)
+        old_t = Task(mission_id=old_m.id, objective="Old Task", assigned_agent_id="builder")
+        tx.tasks.add(old_t)
+        for _i in range(1050):
+            tx.reviews.add(
+                ReviewResult(
+                    task_id=old_t.id, reviewer_agent_id="trust_security", verdict="approve"
+                )
+            )
+
+        # Create current mission
+        curr_m = Mission(outcome="Current Mission")
+        curr_t = Task(
+            mission_id=curr_m.id,
+            objective="Curr Task",
+            assigned_agent_id="builder",
+            workstream_key="primary",
+            deliverable_key="result",
+            status=State.completed,
+        )
+        contract = OwnerOutcomeContract(
+            mission_id=curr_m.id,
+            required_roles=["builder"],
+            required_workstreams=["primary"],
+            required_deliverables=["result"],
+            required_reviews=["independent_review"],
+            required_evidence=["task_evidence"],
+        )
+        tx.missions.add(curr_m)
+        tx.tasks.add(curr_t)
+        tx.owner_outcome_contracts.add(contract)
+        tx.work_artifacts.add(
+            WorkArtifact(
+                mission_id=curr_m.id,
+                task_id=curr_t.id,
+                deliverable_key="result",
+                name="Result Report",
+                origin="AGENT_GENERATED",
+            )
+        )
+        tx.work_evidence.add(
+            WorkEvidence(
+                mission_id=curr_m.id,
+                task_id=curr_t.id,
+                source_type="agent",
+                evidence_type="test",
+                summary="done",
+            )
+        )
+        tx.reviews.add(
+            ReviewResult(task_id=curr_t.id, reviewer_agent_id="trust_security", verdict="approve")
+        )
+
+        tx.refresh_mission(curr_m.id)
+        res_m = tx.missions.get(curr_m.id)
+        res_c = tx.owner_outcome_contracts.get(contract.id)
+        assert res_m.status == State.completed
+        assert res_c.status == "COMPLETED"
+
+
+def test_db_level_org_unit_uniqueness_and_idempotency(store):
+    import sqlite3
+
+    from hufiagents.org_graph import create_org_unit
+
+    with store.transaction() as tx:
+        create_org_unit(tx, "Unique Squad", stable_key="hufi-group/unique-squad")
+
+    # Attempt direct SQL duplicate insert to prove DB UNIQUE constraint
+    with store.engine.begin() as conn:
+        with pytest.raises((sqlite3.IntegrityError, Exception)):
+            conn.exec_driver_sql(
+                "INSERT INTO organization_units (id, stable_key, name, unit_type) "
+                "VALUES ('dup-1', 'hufi-group/unique-squad', 'Dup', 'SQUAD')"
+            )
+
+
+def test_truthful_management_summary_content():
+    from hufiagents.corporate_router import CorporateRouter
+
+    # Clean mission
+    clean_summary = CorporateRouter.format_management_summary(
+        "Clean Task",
+        [],
+        {"target_path": "hufi-group/test"},
+        {"tasks": 1, "artifacts": 1, "evidence": 1, "reviews": 1},
+        open_items=[],
+        findings=[],
+        decision_required=False,
+    )
+    assert "Keine offenen Punkte erfasst." in clean_summary
+    assert "Keine bestätigten Risiken erfasst." in clean_summary
+    assert "Keine ausstehenden Entscheidungen erfasst." in clean_summary
+    assert "nichts." not in clean_summary
+    assert "nein." not in clean_summary
+
+    # Finding and decision required
+    risk_summary = CorporateRouter.format_management_summary(
+        "Risk Task",
+        [],
+        {"target_path": "hufi-group/test"},
+        {"tasks": 1, "artifacts": 1, "evidence": 1, "reviews": 1},
+        open_items=["Task 1 blocked"],
+        findings=["Unresolved security flaw"],
+        decision_required=True,
+    )
+    assert "Task 1 blocked" in risk_summary
+    assert "Unresolved security flaw" in risk_summary
+    assert "Ja – ausstehende Eigentümer-Freigabe erfasst." in risk_summary
+
+
+def test_cards_no_fake_server_resources_and_truthful_empty_state():
+    from pathlib import Path
+
+    cards_path = Path(__file__).parents[2] / "hufiagents" / "api" / "static" / "cards.js"
+    content = cards_path.read_text()
+    assert "placeholderServerResources" not in content
+    assert "XXL Server" not in content
+    assert "OVH Server" not in content
+    assert "OpenCloud Server" not in content
+    assert "Keine Server-Ressourcen angebunden." in content

@@ -251,15 +251,39 @@ class CorporateRouter:
         return routed, contract, route
 
     @staticmethod
-    def format_management_summary(outcome, artifacts, route_info, counts) -> str:
+    def format_management_summary(
+        outcome: str,
+        artifacts: list[Any],
+        route_info: dict[str, Any],
+        counts: dict[str, int],
+        *,
+        open_items: list[str] | None = None,
+        findings: list[str] | None = None,
+        decision_required: bool | None = None,
+    ) -> str:
+        if open_items:
+            open_str = "\n" + "\n".join(f"- {item}" for item in open_items)
+        else:
+            open_str = "Keine offenen Punkte erfasst."
+
+        if findings:
+            risk_str = "\n" + "\n".join(f"- {item}" for item in findings)
+        else:
+            risk_str = "Keine bestätigten Risiken erfasst."
+
+        if decision_required is True:
+            decision_str = "Ja – ausstehende Eigentümer-Freigabe erfasst."
+        else:
+            decision_str = "Keine ausstehenden Entscheidungen erfasst."
+
         return (
             "### HufiBoss Management-Zusammenfassung\n\n"
             f"**Ziel:** {outcome.strip().splitlines()[0]}\n\n"
             f"**Abgeschlossen:** {counts['tasks']} Aufgaben, {counts['artifacts']} Berichte, "
             f"{counts['evidence']} Evidenzen, {counts['reviews']} Reviews.\n\n"
-            "**Offen:** nichts.\n\n"
-            "**Wichtige Risiken:** keine offenen Risiken aus dem Lauf.\n\n"
-            "**Entscheidung erforderlich:** nein.\n\n"
+            f"**Offen:** {open_str}\n\n"
+            f"**Wichtige Risiken:** {risk_str}\n\n"
+            f"**Entscheidung erforderlich:** {decision_str}\n\n"
             f"**Zuständig:** {route_info.get('target_path', 'hufiagents')}\n\n"
             "**Nachweise:**\n" + "\n".join(f"- {item.name}" for item in artifacts)
         )

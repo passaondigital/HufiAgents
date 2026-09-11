@@ -176,7 +176,8 @@ for name, model in MODELS.items():
                 kind,
                 *args,
                 primary_key=field == "id",
-                unique=name == "tool_calls" and field == "idempotency_key",
+                unique=(name == "tool_calls" and field == "idempotency_key")
+                or (name == "organization_units" and field == "stable_key"),
             )
         )
     TABLES[name] = Table(name, metadata, *columns)
