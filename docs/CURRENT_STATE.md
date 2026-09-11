@@ -1,59 +1,34 @@
-# HufiAgents Current State
+# 00A - HufiAgents CURRENT STATE - KI START HERE - Source of Truth
 
-Release baseline:
-v1.2.0
+## Current Production State
 
-Main release commit:
-887ce6871da2f1fd420d1b0ecf4ae830941fab23
+Production release:
+**v1.4.0**
 
-Production:
+Production SHA:
+**8dca1f70fd4a840feae3e47d047d2db1eafc82e6**
+
+Production URL:
 https://agents.heyhufi.com
 
-Current development:
-V1.3 — RELEASE CANDIDATE
+PRs Merged in V1.4.0:
+- PR #39 (Hufi Corporate Matrix & Live Workforce)
+- PR #40 (Hotfix: User bubble text redaction in chat.js)
+- PR #41 (Release metadata: Bump package version to 1.4.0)
 
-## V1.3 Release Candidate Status
+## Verified V1.4.0 Capabilities
 
-Integration branch: `integration/v1-3-full-system`
+- **Corporate Matrix**: REAL (`OrganizationUnit` hierarchy `GROUP` → `COMPANY` → `BUSINESS_UNIT` → `DEPARTMENT` → `TEAM`, `GraphRelationship` edge model, Migration 012)
+- **Mr. Equi Routing**: REAL (`CorporateRouter` deterministic routing without LLM in routing path)
+- **Owner Outcome Contracts**: REAL (gated completion requiring generated deliverables, independent reviewer approvals, and work evidence)
+- **Live Workforce Telemetry**: REAL (`/company/live`, `/company/pulse`, `/company/workforce` derived strictly from persisted runtime state)
+- **Agent Workspace**: REAL (current activity, tasks, timeline, artifacts, evidence, handoffs)
+- **Unit Workspace**: REAL (workers, tasks, artifacts, events, blockers/reviews)
+- **Secret Redaction**: REAL (structured redaction across UI, API, audit logs, and evidence)
+- **Test Suite**: 508 / 508 tests PASS
+- **Visual Acceptance**: PASS (desktop 1366x768 & mobile 390x844)
+- **Production Smoke**: PASS
 
-All V1.3 feature PRs proven and ancestry-verified:
+## Known Limitations / Deferred Items
 
-- PR #29 — Room → Runtime bridge
-- PR #30 — Autonomous Routine Runtime
-- PR #31 — Engineering Repo Context
-- PR #32 — Real Visible Execution / WorkEvidence
-- PR #33 — Workforce Builder
-- PR #34 — Real Chromium Browser (Playwright)
-- PR #35 — Memory + Skills Runtime Reuse
-- PR #27 — Persistent Workspace / Session / MCP (integrated into PR #34)
-
-## Proven V1.3 Capabilities
-
-- Room → Runtime: real agent dispatch from team rooms
-- Autonomous Routine scheduler: ticks, claims, dispatches without manual trigger
-- Engineering Repo Context: bounded, redacted, relevance-ranked source context
-- Visible Execution: real WorkEvidence from real events (no fake indicators)
-- Workforce Builder: provision/configure/archive digital employees
-- Persistent Workspace / Session / MCP adapters
-- Real Chromium browser via Playwright: navigation, click, type, screenshot (PNG)
-- Memory + Skills Runtime Reuse: approved knowledge injected automatically,
-  unapproved/wrong-scope/secret content excluded
-- Multi-agent fan-out / fan-in / delegation / review
-- Risk ceiling / capability / approval / budget guards
-- Secret redaction across all persistence and evidence paths
-- Local-first deterministic retrieval (retrieval_model_calls = 0)
-
-## V1.3 Known Limitations / Gaps
-
-- Learning promotion UI: draft skills from learn_from_mission() need manual
-  approval; no dedicated promotion UI yet
-- Word-overlap relevance only (no semantic/vector retrieval)
-- Team scope wired but team assignment not yet surfaced in Workforce Builder UI
-- Browser process and cookies do not survive application restart (metadata does)
-- durable encrypted credential vault: not yet implemented
-
-## Production Decision
-
-V1.3 RELEASE CANDIDATE READY.
-Production release requires a separate controlled deployment task.
-Production remains v1.2.0 until that task is completed.
+- Multilingual intent matching → deferred to V1.4B.
