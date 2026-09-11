@@ -70,8 +70,8 @@ class EvidenceCollector:
                 try:
                     m = tx.missions.get(m_id)
                     outcome = m.outcome
-                except Exception:
-                    pass
+                except KeyError:
+                    outcome = ""
             summary = f"Mission gestartet: {outcome}".strip() if outcome else "Mission gestartet"
             metadata["outcome"] = outcome
 
@@ -158,8 +158,8 @@ class EvidenceCollector:
             if tool_call_id:
                 try:
                     tool_call = tx.tool_calls.get(tool_call_id)
-                except Exception:
-                    pass
+                except KeyError:
+                    tool_call = None
 
             tool_name = (tool_call.tool if tool_call else detail.get("tool")) or "tool"
             action = (tool_call.action if tool_call else detail.get("action")) or "execute"
@@ -340,17 +340,14 @@ class EvidenceCollector:
 
         # Deduplication check
         if m_id:
-            try:
-                existing = tx.work_evidence.list(mission_id=m_id, limit=20)
-                for e in existing:
-                    if (
-                        e.summary == summary
-                        and e.evidence_type == evidence_type
-                        and (not t_id or e.task_id == t_id)
-                    ):
-                        return None
-            except Exception:
-                pass
+            existing = tx.work_evidence.list(mission_id=m_id, limit=20)
+            for e in existing:
+                if (
+                    e.summary == summary
+                    and e.evidence_type == evidence_type
+                    and (not t_id or e.task_id == t_id)
+                ):
+                    return None
 
         record = WorkEvidence(
             mission_id=m_id,
@@ -377,23 +374,20 @@ class EvidenceCollector:
     @classmethod
     def _notify_room_milestone(cls, tx, mission_id: str, agent_id: str, summary: str):
         """Post a concise milestone message to Room chat if mission originated from a room."""
-        try:
-            m = tx.missions.get(mission_id)
-            room_id = m.constraints.get("room_id") if m and m.constraints else None
-            if room_id:
-                recent = tx.room_messages.list(room_id=room_id, limit=5)
-                m_text = f"📌 {summary}"
-                if not any(msg.content == m_text for msg in recent):
-                    tx.room_messages.add(
-                        RoomMessage(
-                            room_id=room_id,
-                            sender_type="agent" if agent_id != "system" else "system",
-                            sender_id=agent_id,
-                            content=m_text,
-                        )
+        m = tx.missions.get(mission_id)
+        room_id = m.constraints.get("room_id") if m.constraints else None
+        if room_id:
+            recent = tx.room_messages.list(room_id=room_id, limit=5)
+            m_text = f"📌 {summary}"
+            if not any(msg.content == m_text for msg in recent):
+                tx.room_messages.add(
+                    RoomMessage(
+                        room_id=room_id,
+                        sender_type="agent" if agent_id != "system" else "system",
+                        sender_id=agent_id,
+                        content=m_text,
                     )
-        except Exception:
-            pass
+                )
 
 
 def get_mission_execution_feed(
@@ -408,6 +402,10 @@ def get_mission_execution_feed(
     mission = tx.missions.get(mission_id)
     tasks = tx.tasks.list(mission_id=mission_id, limit=100)
     evidence_list = tx.work_evidence.list(mission_id=mission_id, limit=limit, offset=offset)
+    workforce_events = tx.workforce_events.list(
+        mission_id=mission_id, limit=limit, offset=offset, descending=True
+    )
+    persisted_artifacts = tx.work_artifacts.list(mission_id=mission_id, limit=100)
 
     completed_tasks = [t for t in tasks if t.status == "completed"]
     blocked_tasks = [t for t in tasks if t.status in {"blocked", "waiting_approval"}]
@@ -439,19 +437,39 @@ def get_mission_execution_feed(
             try:
                 ag_obj = tx.agents.get(ag_id)
                 ag_role = ag_obj.role
-            except Exception:
-                pass
+            except KeyError:
+                ag_role = ag_id
+            agent_events = [event for event in workforce_events if event.agent_id == ag_id]
+            latest_event = agent_events[0] if agent_events else None
             agents_map[ag_id] = {
                 "agent_id": ag_id,
                 "role": ag_role,
                 "status": t.status,
-                "current_activity": current_activity
-                if t.status == "running"
+                "current_activity": latest_event.safe_summary
+                if latest_event
                 else f"Aufgabe {t.status}",
-                "last_activity_at": t.heartbeat_at or t.created_at or last_activity_at,
+                "last_activity_at": latest_event.timestamp
+                if latest_event
+                else t.heartbeat_at or t.created_at or last_activity_at,
+                "unread_event_count": sum(1 for event in agent_events if event.read_at is None),
+                "active_task_count": sum(
+                    1
+                    for candidate in tasks
+                    if candidate.assigned_agent_id == ag_id
+                    and str(candidate.status)
+                    in {
+                        "queued",
+                        "planning",
+                        "running",
+                        "review",
+                        "retrying",
+                        "blocked",
+                        "waiting_approval",
+                    }
+                ),
             }
 
-    artifacts = list(dict.fromkeys(e.artifact_ref for e in evidence_list if e.artifact_ref))
+    artifacts = [artifact for artifact in persisted_artifacts]
 
     recent_evidence = [
         {
@@ -486,6 +504,7 @@ def get_mission_execution_feed(
         },
         "agents": list(agents_map.values()),
         "recent_evidence": recent_evidence,
+        "events": workforce_events,
         "artifacts": artifacts,
         "blockers": [t.id for t in blocked_tasks],
         "approvals": [t.id for t in blocked_tasks if t.status == "waiting_approval"],
@@ -495,13 +514,17 @@ def get_mission_execution_feed(
 
 
 def get_agent_activity(tx, agent_id: str, limit: int = 20) -> dict[str, Any]:
-    """Return bounded recent activity for an agent derived strictly from evidence."""
-    all_evidence = tx.work_evidence.list(limit=500)
-    agent_evidence = [
-        e
-        for e in all_evidence
-        if e.metadata.get("agent_id") == agent_id or e.metadata.get("actor") == agent_id
-    ][:limit]
+    """Return a real persisted digital work room for one agent."""
+    events = tx.workforce_events.list(agent_id=agent_id, limit=limit, descending=True)
+    tasks = tx.tasks.list(assigned_agent_id=agent_id, limit=200, descending=True)
+    task_ids = {task.id for task in tasks}
+    evidence = [item for item in tx.work_evidence.list(limit=500) if item.task_id in task_ids]
+    artifacts = [item for item in tx.work_artifacts.list(limit=500) if item.task_id in task_ids]
+    messages = [
+        item
+        for item in tx.agent_messages.list(limit=500)
+        if item.from_agent_id == agent_id or item.to_agent_id == agent_id
+    ]
 
     role = agent_id
     status = "active"
@@ -509,18 +532,46 @@ def get_agent_activity(tx, agent_id: str, limit: int = 20) -> dict[str, Any]:
         ag = tx.agents.get(agent_id)
         role = ag.role
         status = ag.status
-    except Exception:
-        pass
+    except KeyError:
+        role = agent_id
 
-    last_act = agent_evidence[-1].created_at if agent_evidence else now()
-    curr_act = agent_evidence[-1].summary if agent_evidence else "Aktiv"
+    active_states = {
+        "queued",
+        "planning",
+        "running",
+        "waiting_approval",
+        "blocked",
+        "review",
+        "retrying",
+    }
+    active_tasks = [task for task in tasks if str(task.status) in active_states]
+    live_status = "AVAILABLE" if status == "active" else status.upper()
+    status_order = (
+        ("BLOCKED", {"blocked"}),
+        ("WAITING", {"waiting_approval"}),
+        ("REVIEWING", {"review"}),
+        ("WORKING", {"running", "retrying"}),
+        ("PLANNING", {"planning", "queued"}),
+    )
+    for candidate, states in status_order:
+        if any(str(task.status) in states for task in active_tasks):
+            live_status = candidate
+            break
+    last_act = events[0].timestamp if events else (tasks[0].created_at if tasks else None)
+    curr_act = events[0].safe_summary if events else "Verfügbar"
 
     return {
         "agent_id": agent_id,
         "role": role,
-        "status": status,
+        "status": live_status,
         "current_activity": curr_act,
         "last_activity_at": last_act,
+        "unread_event_count": sum(1 for event in events if event.read_at is None),
+        "active_task_count": len(active_tasks),
+        "tasks": tasks[:limit],
+        "events": events[:limit],
+        "artifacts": artifacts[-limit:],
+        "messages": messages[-limit:],
         "recent_evidence": [
             {
                 "id": e.id,
@@ -532,6 +583,138 @@ def get_agent_activity(tx, agent_id: str, limit: int = 20) -> dict[str, Any]:
                 "artifact_ref": e.artifact_ref,
                 "created_at": e.created_at,
             }
-            for e in agent_evidence
+            for e in evidence[-limit:]
         ],
     }
+
+
+def get_company_live_feed(tx, *, limit=50, offset=0, mission_id=None, unit_id=None):
+    filters = {
+        key: value
+        for key, value in {"mission_id": mission_id, "unit_id": unit_id}.items()
+        if value is not None
+    }
+    events = tx.workforce_events.list(limit=limit, offset=offset, descending=True, **filters)
+    return {"events": events, "limit": limit, "offset": offset, "source": "persisted_runtime"}
+
+
+def get_company_pulse(tx):
+    tasks = tx.tasks.list(limit=1000)
+    active = [
+        task
+        for task in tasks
+        if str(task.status)
+        in {"queued", "planning", "running", "waiting_approval", "blocked", "review", "retrying"}
+    ]
+    mission_ids = {task.mission_id for task in active}
+    missions = tx.missions.list(limit=1000)
+    approvals = tx.approvals.list(status="pending", limit=1000)
+    events = tx.workforce_events.list(limit=1000)
+    model_calls = [event for event in tx.audit.list(limit=1000) if event.event_type == "model_call"]
+    local_providers = {"fake", "hufi-local-router", "ollama"}
+    paid_calls = [
+        event for event in model_calls if event.detail.get("provider") not in local_providers
+    ]
+    active_unit_ids = {
+        event.unit_id for event in events if event.mission_id in mission_ids and event.unit_id
+    }
+    today = now().date()
+    return {
+        "active_areas": len(active_unit_ids),
+        "completed_today": sum(
+            1
+            for mission in missions
+            if str(mission.status) == "completed"
+            and mission.completed_at
+            and mission.completed_at.date() == today
+        ),
+        "blocked": sum(1 for task in active if str(task.status) == "blocked"),
+        "needs_owner_decision": len(approvals),
+        "p0_count": sum(1 for event in events if event.severity == "P0"),
+        "external_model_cost": sum(float(event.detail.get("cost") or 0) for event in paid_calls),
+        "paid_model_calls": len(paid_calls),
+        "owner_instructions": len(missions),
+        "owner_interventions": len(approvals),
+        "tasks": len(tasks),
+        "artifacts": len(tx.work_artifacts.list(limit=1000)),
+        "evidence": len(tx.work_evidence.list(limit=1000)),
+        "source": "persisted_records",
+    }
+
+
+def get_company_workforce(tx, limit=200):
+    """Build the bounded sidebar/company state without per-agent queries."""
+    agents = {agent.id: agent for agent in tx.agents.list(status="active", limit=limit)}
+    tasks = tx.tasks.list(limit=1000, descending=True)
+    events = tx.workforce_events.list(limit=1000, descending=True)
+    relationships = tx.relationships.list(relationship_type="member_of_unit", limit=5000)
+    units = {unit.id: unit for unit in tx.organization_units.list(status="active", limit=1000)}
+    active_values = {
+        "queued",
+        "planning",
+        "running",
+        "waiting_approval",
+        "blocked",
+        "review",
+        "retrying",
+    }
+    active_tasks = [task for task in tasks if str(task.status) in active_values]
+    latest_by_agent = {}
+    for event in events:
+        if event.agent_id and event.agent_id not in latest_by_agent:
+            latest_by_agent[event.agent_id] = event
+    tasks_by_agent = {}
+    for task in active_tasks:
+        tasks_by_agent.setdefault(task.assigned_agent_id, []).append(task)
+    unit_by_agent = {}
+    for relationship in relationships:
+        unit_by_agent.setdefault(relationship.source_id, []).append(relationship.target_id)
+
+    workers = []
+    for agent_id, agent in agents.items():
+        own_tasks = tasks_by_agent.get(agent_id, [])
+        states = {str(task.status) for task in own_tasks}
+        live_state = "AVAILABLE"
+        for candidate, matching in (
+            ("BLOCKED", {"blocked"}),
+            ("WAITING", {"waiting_approval"}),
+            ("REVIEWING", {"review"}),
+            ("WORKING", {"running", "retrying"}),
+            ("PLANNING", {"planning", "queued"}),
+        ):
+            if states & matching:
+                live_state = candidate
+                break
+        latest = latest_by_agent.get(agent_id)
+        workers.append(
+            {
+                "agent_id": agent_id,
+                "name": agent.name or agent_id,
+                "role": agent.role,
+                "live_state": live_state,
+                "current_activity": latest.safe_summary if latest else "Verfügbar",
+                "last_activity_at": latest.timestamp if latest else None,
+                "unread_event_count": sum(
+                    1 for event in events if event.agent_id == agent_id and event.read_at is None
+                ),
+                "active_task_count": len(own_tasks),
+                "unit_ids": unit_by_agent.get(agent_id, []),
+            }
+        )
+
+    areas = []
+    for unit_id, unit in units.items():
+        members = [worker for worker in workers if unit_id in worker["unit_ids"]]
+        active_members = [worker for worker in members if worker["active_task_count"]]
+        if members or unit.unit_type in {"BUSINESS_UNIT", "SHARED_SERVICE"}:
+            areas.append(
+                {
+                    "unit_id": unit_id,
+                    "name": unit.name,
+                    "stable_key": unit.stable_key,
+                    "status": "WORKING" if active_members else "AVAILABLE",
+                    "active_agent_count": len(active_members),
+                    "unread_event_count": sum(item["unread_event_count"] for item in members),
+                }
+            )
+    return {"areas": areas, "workers": workers, "source": "persisted_runtime"}

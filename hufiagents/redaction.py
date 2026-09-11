@@ -6,6 +6,9 @@ SENSITIVE = re.compile(
     re.I,
 )
 PATTERNS = [
+    # Explicit test/sentinel-style secret identifiers must not survive in any
+    # visible surface even when they are not written as key=value.
+    re.compile(r"\b[A-Z0-9_]*(?:SECRET|PASSWORD|TOKEN|API_KEY)[A-Z0-9_]*\b(?!\s*[=:])"),
     # Header values (including Basic auth) and cookie/session headers.
     re.compile(r"(?i)((?:authorization|proxy-authorization)\s*:\s*)[^\r\n]+"),
     re.compile(r"(?i)((?:cookie|set-cookie)\s*:\s*)[^\r\n]+"),

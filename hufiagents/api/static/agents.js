@@ -26,6 +26,9 @@
 
   function humanizeId(id) {
     const labels = {
+      hufiboss: 'HufiBoss', mr_equi: 'Mr. Equi', provider_qa: 'Provider QA',
+      client_qa: 'Client QA', partner_qa: 'Partner QA', cross_role_qa: 'Cross-Role QA',
+      trust_security: 'HufiTrust Sentinel',
       hufi_chief: 'Hufi', builder: 'Entwicklung', integrator: 'Integration',
       project_lead: 'Projektleitung', reviewer: 'Qualitätsprüfung', security: 'Sicherheit',
     };
@@ -175,18 +178,61 @@
       </button>`;
   }
 
-  function renderSidebar(agents) {
+  function renderSidebar(agents, workforce = {areas: [], workers: []}, pulse = {}) {
     const list = Hufi.mount.sidebarList;
     list.innerHTML = '';
-    if (!agents.length) {
-      list.appendChild(Hufi.el('<p class="empty-hint">Keine Hufis gefunden.</p>'));
-      return;
-    }
-    for (const agent of agents) {
-      const row = Hufi.el(agentRowHtml(agent));
-      row.addEventListener('click', () => selectAgent(agent));
+    const boss = agents.find((agent) => agent.id === 'hufiboss');
+    if (boss) {
+      const row = Hufi.el(agentRowHtml(boss));
+      row.classList.add('agent-row--boss');
+      row.addEventListener('click', () => selectAgent(boss));
       list.appendChild(row);
     }
+    const areaLabel = Hufi.el('<div class="sidebar-inline-label">Aktive Bereiche</div>');
+    list.appendChild(areaLabel);
+    const areas = workforce.areas.filter((area) => /\/shared\/|\/business\//.test(area.stable_key));
+    for (const area of areas) {
+      const active = area.status === 'WORKING';
+      const badge = area.unread_event_count ? `<span class="event-badge">${area.unread_event_count}</span>` : '';
+      const row = Hufi.el(`<button type="button" class="area-row" data-unit-id="${Hufi.esc(area.unit_id)}">
+        <span class="area-row__indicator ${active ? 'is-working' : ''}" aria-hidden="true">${active ? '⚙' : '○'}</span>
+        <span class="area-row__name">${Hufi.esc(area.name)}</span>
+        <span class="area-row__count">${active ? area.active_agent_count : ''}</span>${badge}
+      </button>`);
+      row.addEventListener('click', () => openUnitWorkspace(area));
+      list.appendChild(row);
+    }
+    const decisions = Hufi.el(`<button type="button" class="decision-row"><span>Benötigt dich</span><span class="event-badge">${pulse.needs_owner_decision || 0}</span></button>`);
+    decisions.addEventListener('click', () => Hufi.views && Hufi.views.show('arbeit'));
+    list.appendChild(decisions);
+
+    const details = Hufi.el('<details class="worker-directory"><summary>Einzelne Mitarbeitende</summary><div class="worker-directory__list"></div></details>');
+    const directory = details.querySelector('.worker-directory__list');
+    for (const worker of workforce.workers.filter((item) => item.agent_id !== 'hufiboss')) {
+      const agent = agents.find((item) => item.id === worker.agent_id);
+      if (!agent) continue;
+      const row = Hufi.el(agentRowHtml({...agent, status: worker.live_state}));
+      row.querySelector('.agent-row-role').textContent = worker.current_activity;
+      row.addEventListener('click', () => selectAgent(agent));
+      directory.appendChild(row);
+    }
+    list.appendChild(details);
+  }
+
+  async function openUnitWorkspace(area) {
+    Hufi.rightPane.show(area.name, async (container) => {
+      container.innerHTML = '<p class="empty-hint">Arbeitsbereich lädt …</p>';
+      try {
+        const data = await Hufi.api(`/org-units/${encodeURIComponent(area.unit_id)}/workspace?limit=50`);
+        container.innerHTML = `<div class="unit-workspace"><h2>${Hufi.esc(data.unit.name)}</h2>
+          <p class="muted">${data.tasks.length} Aufgaben · ${data.active_agents.length} Mitarbeitende · ${data.artifacts.length} Artefakte</p>
+          <h3>Aufgaben</h3>${data.tasks.map((task) => `<div class="card unit-workspace__item"><strong>${Hufi.esc(task.objective)}</strong><span>${Hufi.esc(String(task.status).toUpperCase())}</span></div>`).join('') || '<p class="empty-hint">Keine laufende Arbeit.</p>'}
+          <h3>Letzte Aktivität</h3>${data.events.map((event) => `<div class="activity-item"><span class="activity-dot ${event.severity ? 'tone-bad' : 'tone-idle'}"></span><div><div>${Hufi.esc(event.safe_summary)}</div><small class="faint">${Hufi.esc(Hufi.fmtTime(event.timestamp))}</small></div></div>`).join('') || '<p class="empty-hint">Noch keine Aktivität.</p>'}
+          <h3>Artefakte</h3>${data.artifacts.map((artifact) => `<div class="tag">${Hufi.esc(artifact.name)}</div>`).join('') || '<p class="empty-hint">Noch keine Artefakte.</p>'}</div>`;
+      } catch (error) {
+        container.innerHTML = `<p class="empty-hint">Arbeitsbereich nicht verfügbar: ${Hufi.esc(Hufi.errors.translate(error.message))}</p>`;
+      }
+    });
   }
 
   function selectAgent(agent) {
@@ -202,20 +248,23 @@
     if (!input) return;
     input.addEventListener('input', () => {
       const q = input.value.trim().toLowerCase();
-      if (!q) return renderSidebar(agentsCache);
+      if (!q) return loadSidebar();
       const filtered = agentsCache.filter((a) => {
         const name = humanizeId(a.id).toLowerCase();
         const role = friendlyRole(a.role).toLowerCase();
         return name.includes(q) || role.includes(q);
       });
-      renderSidebar(filtered);
+      renderSidebar(filtered, {areas: [], workers: filtered.map((agent) => ({agent_id: agent.id, live_state: agent.status, current_activity: friendlyRole(agent.role)}))});
     });
   }
 
   async function loadSidebar() {
     try {
-      agentsCache = await Hufi.api('/agents');
-      renderSidebar(agentsCache);
+      const [agents, workforce, pulse] = await Promise.all([
+        Hufi.api('/agents'), Hufi.api('/company/workforce'), Hufi.api('/company/pulse'),
+      ]);
+      agentsCache = agents;
+      renderSidebar(agentsCache, workforce, pulse);
     } catch (e) {
       Hufi.mount.sidebarList.innerHTML = '';
       Hufi.mount.sidebarList.appendChild(
@@ -371,25 +420,45 @@
     const target = container.querySelector('#agentActivity');
     if (!target) return;
     try {
-      const events = await fetchAggregatedAudit();
-      const mine = events.filter((e) => e.actor === agentId).slice(0, 25);
+      const activity = await Hufi.api(`/agents/${encodeURIComponent(agentId)}/activity?limit=25`);
+      const events = activity.events || [];
+      const statusPill = container.querySelector('.agent-profile-heading .pill');
+      if (statusPill) {
+        statusPill.textContent = activity.status;
+        statusPill.className = `pill ${['WORKING', 'PLANNING', 'REVIEWING'].includes(activity.status) ? 'tone-ok' : activity.status === 'BLOCKED' ? 'tone-bad' : 'tone-idle'}`;
+      }
       target.innerHTML = '';
-      if (!mine.length) {
+      const summary = Hufi.el(`<div class="card agent-live-summary"><strong>${Hufi.esc(activity.current_activity)}</strong><span class="muted">${activity.active_task_count} aktive Aufgaben · ${activity.unread_event_count} neue Ereignisse</span></div>`);
+      target.appendChild(summary);
+      if (!events.length) {
         target.appendChild(Hufi.el('<p class="empty-hint">Noch keine Aktivität.</p>'));
         return;
       }
       const list = Hufi.el('<div class="activity-list"></div>');
-      for (const e of mine) {
+      for (const e of events) {
         list.appendChild(Hufi.el(`
           <div class="activity-item" data-fade-in>
-            <span class="activity-dot ${eventTone(e.event_type)}"></span>
+            <span class="activity-dot ${e.severity ? 'tone-bad' : 'tone-idle'}"></span>
             <div class="activity-body">
-              <div class="activity-label">${Hufi.esc(eventLabel(e.event_type))}</div>
-              <div class="activity-time faint">${Hufi.esc(Hufi.fmtTime(e.ts))}</div>
+              <div class="activity-label">${Hufi.esc(e.safe_summary)}</div>
+              <div class="activity-time faint">${Hufi.esc(Hufi.fmtTime(e.timestamp))} · ${Hufi.esc(e.event_type.replace(/_/g, ' '))}</div>
             </div>
           </div>`));
       }
       target.appendChild(list);
+      if (activity.artifacts.length) {
+        target.appendChild(Hufi.el(`<div class="agent-output-list"><strong>Artefakte</strong>${activity.artifacts.map((item) => `<span class="tag">${Hufi.esc(item.name)}</span>`).join('')}</div>`));
+      }
+      if (activity.messages.length) {
+        target.appendChild(Hufi.el(`<div class="agent-output-list"><strong>Nachrichten / Handoffs</strong>${activity.messages.map((item) => `<div>${Hufi.esc(item.message_type)} · ${Hufi.esc(item.content)}</div>`).join('')}</div>`));
+      }
+      Promise.all(
+        events.filter((event) => !event.read_at).map((event) =>
+          Hufi.api(`/workforce-events/${encodeURIComponent(event.id)}/read`, {method: 'POST'})
+        )
+      ).then(() => loadSidebar()).catch((error) => {
+        console.warn('Unread event state could not be persisted', error);
+      });
     } catch (e) {
       target.innerHTML = '';
       target.appendChild(Hufi.el(`<p class="empty-hint">Aktivität konnte nicht geladen werden.</p>`));
@@ -571,6 +640,7 @@
     getById: (id) => agentsCache.find((a) => a.id === id),
     humanizeId,
     openSystemView,
+    openAgentWorkspace: selectAgent,
   };
 
   // ---------- Init ----------

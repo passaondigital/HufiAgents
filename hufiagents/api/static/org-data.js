@@ -165,6 +165,7 @@
       try {
         graph = await Hufi.api('/org');
         graph = {
+          orgUnits: graph.organization_units || [],
           teams: graph.teams || [],
           graphProjects: graph.graph_projects || [],
           resources: graph.resources || [],
@@ -176,7 +177,7 @@
         // Development fixtures remain in this file for explicit test harnesses,
         // but an unavailable backend is represented as an empty state.
         unavailable = true;
-        graph = { teams: [], graphProjects: [], resources: [], relationships: [], rooms: [] };
+        graph = { orgUnits: [], teams: [], graphProjects: [], resources: [], relationships: [], rooms: [] };
       }
       state = { agents, ...graph, mock, unavailable };
       notify();
@@ -188,6 +189,7 @@
     subscribe(fn) { listeners.push(fn); return () => { const i = listeners.indexOf(fn); if (i >= 0) listeners.splice(i, 1); }; },
 
     getAgentById(id) { return state?.agents.find((a) => a.id === id) || null; },
+    getOrgUnitById(id) { return state?.orgUnits?.find((u) => u.id === id) || null; },
     getTeamById(id) { return state?.teams.find((t) => t.id === id) || null; },
     getProjectById(id) { return state?.graphProjects.find((p) => p.id === id) || null; },
     getResourceById(id) { return state?.resources.find((r) => r.id === id) || null; },

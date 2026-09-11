@@ -210,7 +210,7 @@ def test_successful_occurrence_creates_mission(tmp_path):
     assert dispatched == [routine.id]
 
     with store.transaction() as tx:
-        events = tx.audit.list(limit=20)
+        events = tx.audit.list(descending=True, limit=50)
         dispatch_events = [e for e in events if e.event_type == "routine_dispatched"]
         assert len(dispatch_events) == 1
         submitted_mission_id = dispatch_events[0].detail.get("submitted_mission_id")

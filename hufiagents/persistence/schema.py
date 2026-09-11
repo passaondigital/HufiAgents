@@ -25,6 +25,8 @@ from hufiagents.contracts import (
     MCPToolDefinition,
     MemoryRecord,
     Mission,
+    OrganizationUnit,
+    OwnerOutcomeContract,
     Resource,
     ReviewResult,
     RoomMessage,
@@ -35,7 +37,9 @@ from hufiagents.contracts import (
     Task,
     Team,
     ToolCall,
+    WorkArtifact,
     WorkEvidence,
+    WorkforceEvent,
     WorkspaceSession,
 )
 
@@ -77,6 +81,10 @@ MODELS = {
     "learning_records": LearningRecord,
     "mcp_servers": MCPServerRegistration,
     "mcp_tools": MCPToolDefinition,
+    "organization_units": OrganizationUnit,
+    "owner_outcome_contracts": OwnerOutcomeContract,
+    "work_artifacts": WorkArtifact,
+    "workforce_events": WorkforceEvent,
 }
 JSON_FIELDS = {
     "constraints",
@@ -109,6 +117,12 @@ JSON_FIELDS = {
     "args",
     "env_keys",
     "required_scopes",
+    "required_roles",
+    "required_workstreams",
+    "required_deliverables",
+    "required_reviews",
+    "required_evidence",
+    "completion_conditions",
 }
 INTEGER_FIELDS = {
     "budget_tokens",
@@ -138,6 +152,8 @@ FK = {
     "workspace_id": "agent_workspaces.id",
     "connector_id": "connectors.id",
     "server_id": "mcp_servers.id",
+    "parent_unit_id": "organization_units.id",
+    "unit_id": "organization_units.id",
 }
 TABLES = {}
 for name, model in MODELS.items():
@@ -160,7 +176,8 @@ for name, model in MODELS.items():
                 kind,
                 *args,
                 primary_key=field == "id",
-                unique=name == "tool_calls" and field == "idempotency_key",
+                unique=(name == "tool_calls" and field == "idempotency_key")
+                or (name == "organization_units" and field == "stable_key"),
             )
         )
     TABLES[name] = Table(name, metadata, *columns)

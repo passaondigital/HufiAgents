@@ -462,13 +462,7 @@
   // ==========================================================================
   // "Projekte" view
   // ==========================================================================
-  function placeholderServerResources() {
-    return [
-      { id: 'placeholder-xxl-server', name: 'XXL Server', resource_type: 'server', description: 'Für die zukünftige Anbindung vorgesehen.', metadata: {}, status: 'planned', _notConnected: true },
-      { id: 'placeholder-ovh-server', name: 'OVH Server', resource_type: 'server', description: 'Für die zukünftige Anbindung vorgesehen.', metadata: {}, status: 'planned', _notConnected: true },
-      { id: 'placeholder-opencloud-server', name: 'OpenCloud Server', resource_type: 'server', description: 'Für die zukünftige Anbindung vorgesehen.', metadata: {}, status: 'planned', _notConnected: true },
-    ];
-  }
+
 
   async function loadRegistryProjects() {
     try {
@@ -630,9 +624,6 @@
 
           let combined = state.resources.filter((r) => !r.archived_at).slice();
           if (registryResources) combined = combined.concat(registryResources);
-          if (!combined.some((r) => r.resource_type === 'server')) {
-            combined = combined.concat(placeholderServerResources());
-          }
 
           const q = searchInput.value.trim().toLowerCase();
           const typeQ = typeFilter.value;
@@ -649,7 +640,8 @@
 
           if (registryError) resourceGrid.appendChild(el('<p class="empty-hint">Verbundene Repositories konnten nicht geladen werden.</p>'));
           if (!filtered.length) {
-            resourceGrid.appendChild(el('<p class="empty-hint">Keine Ressourcen gefunden.</p>'));
+            const hint = typeQ === 'server' ? 'Keine Server-Ressourcen angebunden.' : 'Keine Ressourcen gefunden.';
+            resourceGrid.appendChild(el(`<p class="empty-hint">${Hufi.esc(hint)}</p>`));
             return;
           }
           filtered.forEach((r) => resourceGrid.appendChild(Hufi.cards.renderResourceTile(r)));
