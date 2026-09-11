@@ -177,5 +177,6 @@ def test_frontend_truthful_language_and_accessibility_guards():
     index = (static / "index.html").read_text()
     assert "Ich bereite den Auftrag vor." in chat
     assert "Mein Team arbeitet jetzt daran." in chat
+    assert "visibleRedact(text)" in chat
     assert "prefers-reduced-motion" in css
     assert "HufiBoss" in index
