@@ -82,6 +82,8 @@ class Task(Contract):
     selected_provider: str | None = None
     routing_reason: str | None = None
     result: str | None = None
+    workstream_key: str | None = None
+    deliverable_key: str | None = None
 
 
 class Agent(Contract):
@@ -180,6 +182,9 @@ class AgentMessage(Contract):
     status: Literal["unread", "handled"] = "unread"
     correlation_id: str | None = None
     delegation_id: str | None = None
+    message_type: Literal[
+        "REQUEST", "RESULT", "HANDOFF", "BLOCKER", "REVIEW", "CHALLENGE", "APPROVAL", "INFO"
+    ] = "INFO"
 
 
 class Routine(Contract):
@@ -408,6 +413,89 @@ class MemoryRecord(Contract):
     created_at: datetime = Field(default_factory=now)
 
 
+class OrganizationUnit(Contract):
+    id: str = Field(default_factory=uid)
+    stable_key: str = Field(min_length=1, max_length=300)
+    name: str = Field(min_length=1, max_length=200)
+    description: str = ""
+    unit_type: Literal[
+        "GROUP",
+        "COMPANY",
+        "BUSINESS_UNIT",
+        "DIVISION",
+        "DEPARTMENT",
+        "TEAM",
+        "SQUAD",
+        "CELL",
+        "SHARED_SERVICE",
+    ] = "DEPARTMENT"
+    parent_unit_id: str | None = None
+    project_id: str | None = None
+    status: Literal["active", "archived"] = "active"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+    archived_at: datetime | None = None
+
+
+class OwnerOutcomeContract(Contract):
+    id: str = Field(default_factory=uid)
+    mission_id: str
+    required_roles: list[str] = Field(default_factory=list)
+    required_workstreams: list[str] = Field(default_factory=list)
+    required_deliverables: list[str] = Field(default_factory=list)
+    required_reviews: list[str] = Field(default_factory=list)
+    required_evidence: list[str] = Field(default_factory=list)
+    completion_conditions: dict[str, Any] = Field(default_factory=dict)
+    status: Literal[
+        "ACCEPTED",
+        "PLANNING",
+        "DISPATCHING",
+        "RUNNING",
+        "WAITING",
+        "WAITING_APPROVAL",
+        "REVIEWING",
+        "PARTIAL",
+        "BLOCKED",
+        "FAILED",
+        "COMPLETED",
+    ] = "ACCEPTED"
+    created_at: datetime = Field(default_factory=now)
+    updated_at: datetime = Field(default_factory=now)
+    completed_at: datetime | None = None
+
+
+class WorkArtifact(Contract):
+    id: str = Field(default_factory=uid)
+    mission_id: str
+    task_id: str | None = None
+    agent_id: str | None = None
+    deliverable_key: str | None = None
+    name: str = Field(min_length=1, max_length=1000)
+    artifact_ref: str | None = Field(default=None, max_length=2000)
+    origin: Literal[
+        "OWNER_INPUT", "IMPORTED", "AGENT_GENERATED", "TOOL_GENERATED", "SYSTEM_GENERATED"
+    ]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime = Field(default_factory=now)
+
+
+class WorkforceEvent(Contract):
+    id: str = Field(default_factory=uid)
+    timestamp: datetime = Field(default_factory=now)
+    agent_id: str | None = None
+    unit_id: str | None = None
+    mission_id: str | None = None
+    task_id: str | None = None
+    event_type: str = Field(min_length=1, max_length=100)
+    safe_summary: str = Field(default="", max_length=16000)
+    artifact_ref: str | None = Field(default=None, max_length=2000)
+    status: str | None = Field(default=None, max_length=100)
+    severity: str | None = Field(default=None, max_length=50)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    read_at: datetime | None = None
+
+
 class Team(Contract):
     id: str = Field(default_factory=uid)
     name: str = Field(min_length=1, max_length=200)
@@ -443,7 +531,11 @@ class GraphRelationship(Contract):
     relationship_type: Literal[
         "reports_to",
         "member_of_team",
+        "member_of_unit",
+        "unit_belongs_to",
         "works_on_project",
+        "reviews",
+        "backup_for",
         "responsible_for_resource",
         "may_use_resource",
     ]

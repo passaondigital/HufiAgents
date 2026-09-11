@@ -45,6 +45,9 @@ class TaskSpec(Contract):
     budget_seconds: int = Field(300, ge=1, le=3600)
     budget_tokens: int = Field(512, ge=1, le=8192)
     operations: list[Operation] = Field(default_factory=list, max_length=10)
+    workstream_key: str | None = None
+    deliverable_key: str | None = None
+    dependency_indexes: list[int] | None = None
 
     @field_validator("acceptance_criteria")
     @classmethod
@@ -89,9 +92,15 @@ class Planner:
                 mission_id=mission.id,
                 risk_ceiling=request.risk_ceiling,
                 assigned_agent_id=spec.agent_id,
-                **spec.model_dump(exclude={"operations", "agent_id"}),
+                **spec.model_dump(exclude={"operations", "agent_id", "dependency_indexes"}),
             )
-            if tasks:
-                task.dependencies = [tasks[-1][0].id]
             tasks.append((task, spec.operations))
+        for index, (task, _) in enumerate(tasks):
+            dependency_indexes = specs[index].dependency_indexes
+            if dependency_indexes is None:
+                task.dependencies = [tasks[index - 1][0].id] if index else []
+            else:
+                if any(item < 0 or item >= index for item in dependency_indexes):
+                    raise ValueError("task dependency indexes must refer to earlier tasks")
+                task.dependencies = [tasks[item][0].id for item in dependency_indexes]
         return mission, tasks

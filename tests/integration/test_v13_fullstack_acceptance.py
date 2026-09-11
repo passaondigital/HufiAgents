@@ -375,8 +375,10 @@ async def test_autonomous_routine_fullstack(tmp_path):
     assert dispatched == [routine.id]
 
     with store.transaction() as tx:
-        events = tx.audit.list(limit=20)
-        dispatch_events = [e for e in events if e.event_type == "routine_dispatched"]
+        # V1.4A bootstrap_corporate_matrix generates many audit events (org units,
+        # agents, relationships); filter by event_type directly so the limit does
+        # not truncate the routine_dispatched entry.
+        dispatch_events = tx.audit.list(event_type="routine_dispatched", limit=10)
         assert len(dispatch_events) == 1
 
     # Restart idempotency: second tick must not re-dispatch same routine

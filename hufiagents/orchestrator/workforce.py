@@ -113,6 +113,9 @@ class Workforce:
     def send_message(self, message: AgentMessage):
         if bool(message.to_agent_id) == bool(message.channel_id):
             raise ValueError("message requires exactly one recipient: agent or channel")
+        from hufiagents.redaction import redact
+
+        message.content = redact(message.content)
         with self.store.transaction() as tx:
             sender = tx.agents.get(message.from_agent_id)
             if sender.status != "active":
@@ -127,7 +130,7 @@ class Workforce:
                 tx.delegations.get(message.delegation_id)
             tx.agent_messages.add(message)
             tx.log(
-                "agent_message_sent",
+                "message_sent",
                 actor=sender.id,
                 mission_id=message.mission_id,
                 task_id=message.task_id,
@@ -135,6 +138,8 @@ class Workforce:
                 to_agent_id=message.to_agent_id,
                 channel_id=message.channel_id,
                 delegation_id=message.delegation_id,
+                message_type=message.message_type,
+                summary=f"{message.message_type}: Nachricht an {message.to_agent_id or 'Kanal'}",
             )
             return message
 

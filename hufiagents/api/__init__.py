@@ -28,8 +28,15 @@ from hufiagents.contracts import (
     ScopedMemory,
     Skill,
     WorkEvidence,
+    now,
 )
-from hufiagents.evidence import get_agent_activity, get_mission_execution_feed
+from hufiagents.evidence import (
+    get_agent_activity,
+    get_company_live_feed,
+    get_company_pulse,
+    get_company_workforce,
+    get_mission_execution_feed,
+)
 from hufiagents.knowledge import KnowledgeService
 from hufiagents.mcp import MCPAdapter
 from hufiagents.orchestrator.engine import Orchestrator
@@ -651,6 +658,48 @@ def create_app(settings=None, providers=None):
     ):
         with request.app.state.store.transaction() as tx:
             return get_agent_activity(tx, agent_id, limit=limit)
+
+    @app.get("/company/live")
+    async def company_live_feed(
+        mission_id: str | None = None,
+        unit_id: str | None = None,
+        limit: int = Query(50, ge=1, le=100),
+        offset: int = Query(0, ge=0),
+    ):
+        with app.state.store.transaction() as tx:
+            return get_company_live_feed(
+                tx, limit=limit, offset=offset, mission_id=mission_id, unit_id=unit_id
+            )
+
+    @app.get("/company/pulse")
+    async def company_pulse():
+        with app.state.store.transaction() as tx:
+            return get_company_pulse(tx)
+
+    @app.get("/company/workforce")
+    async def company_workforce(limit: int = Query(200, ge=1, le=500)):
+        with app.state.store.transaction() as tx:
+            return get_company_workforce(tx, limit=limit)
+
+    @app.post("/workforce-events/{identifier}/read")
+    async def read_workforce_event(identifier: str):
+        with app.state.store.transaction() as tx:
+            event = tx.workforce_events.get(identifier)
+            if not event:
+                raise HTTPException(404, "workforce event not found")
+            if event.read_at is None:
+                event.read_at = now()
+                tx.workforce_events.save(event)
+            return event
+
+    @app.get("/missions/{mission_id}/outcome")
+    async def owner_outcome(mission_id: str):
+        with app.state.store.transaction() as tx:
+            contract = tx.owner_outcome_contracts.list(mission_id=mission_id, limit=1)
+            if not contract:
+                raise HTTPException(404, "owner outcome contract not found")
+            artifacts = tx.work_artifacts.list(mission_id=mission_id, limit=100)
+            return {"contract": contract[0], "artifacts": artifacts}
 
     @app.get("/reviews")
     async def reviews(task_id: str):

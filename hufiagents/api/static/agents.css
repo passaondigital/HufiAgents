@@ -32,6 +32,53 @@
   outline-offset: -2px;
 }
 .agent-row:active { transform: scale(.99); }
+.agent-row--boss { background: var(--accent-bg); border: 1px solid rgba(244, 127, 31, .3); }
+.sidebar-inline-label {
+  margin: var(--space-4) var(--space-3) var(--space-2);
+  color: var(--text-faint);
+  font-size: .72rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+.area-row, .decision-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.area-row:hover, .decision-row:hover { background: var(--surface-2); }
+.area-row__name, .decision-row span:first-child { flex: 1; }
+.area-row__indicator { width: 20px; color: var(--idle); text-align: center; }
+.area-row__indicator.is-working { color: var(--accent); animation: hufiSpin 1.8s linear infinite; }
+.area-row__count { color: var(--text-muted); }
+.event-badge {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: #fff;
+  font-size: .72rem;
+  line-height: 20px;
+  text-align: center;
+}
+.worker-directory { margin-top: var(--space-3); border-top: 1px solid var(--border-soft); }
+.worker-directory summary { min-height: 44px; padding: var(--space-3); color: var(--text-muted); cursor: pointer; }
+.agent-live-summary { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-3); }
+.agent-output-list { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+.agent-output-list strong { width: 100%; }
+.unit-workspace h3 { margin-top: var(--space-5); color: var(--text-muted); font-size: .82rem; text-transform: uppercase; }
+.unit-workspace__item { display: flex; flex-direction: column; gap: var(--space-1); margin-bottom: var(--space-2); }
+@media (prefers-reduced-motion: reduce) { .area-row__indicator.is-working { animation: none; } }
 
 .agent-row-main {
   flex: 1;

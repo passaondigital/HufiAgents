@@ -103,6 +103,13 @@
   const state = { missions: new Map() };
   let currentAgentId = null;
 
+  function visibleRedact(value) {
+    return String(value || '')
+      .replace(/((?:password|passwd|token|secret|api[_-]?key|authorization|cookie)\s*[=:]\s*)[^\s,;&]+/gi, '$1[REDACTED]')
+      .replace(/\b[A-Z0-9_]*(?:SECRET|PASSWORD|TOKEN|API_KEY)[A-Z0-9_]*\b(?!\s*[=:])/g, '[REDACTED]')
+      .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|sk-[A-Za-z0-9_-]+)\b/g, '[REDACTED]');
+  }
+
   function scrollToBottom() {
     requestAnimationFrame(() => { threadEl.scrollTop = threadEl.scrollHeight; });
   }
@@ -286,7 +293,7 @@
         <div class="bubble bubble--hufi" data-fade-in></div>
       </div>
     `);
-    turnEl.querySelector('.bubble--user').textContent = text;
+    turnEl.querySelector('.bubble--user').textContent = visibleRedact(text);
     listEl.appendChild(turnEl);
     scrollToBottom();
     return turnEl;
@@ -371,8 +378,9 @@
     const turnEl = Hufi.el(`
       <div class="turn" data-fade-in>
         <div class="bubble bubble--user" data-fade-in></div>
-        <div class="bubble bubble--hufi" data-fade-in>Alles klar. Ich prüfe das mit meinem Team.</div>
+        <div class="bubble bubble--hufi" data-fade-in>Alles klar. Ich bereite den Auftrag vor.</div>
         <div class="progress-lines"></div>
+        <div class="live-workforce-slot"></div>
         <button type="button" class="details-toggle">Details anzeigen</button>
         <div class="details-panel" hidden><div class="details-timeline"><p class="empty-hint">Lädt …</p></div></div>
         <div class="approval-slot"></div>
@@ -410,6 +418,13 @@
     }
 
     wireDetailsToggle(turnEl, mission.id);
+    const dispatch = await Hufi.api(`/company/live?mission_id=${encodeURIComponent(mission.id)}&limit=20`).catch(() => ({events: []}));
+    const assigned = dispatch.events.filter((event) => event.event_type === 'AGENT_ASSIGNED');
+    if (assigned.length > 1) {
+      turnEl.querySelector('.bubble--hufi').textContent = 'Der Auftrag ist verteilt. Mein Team arbeitet jetzt daran.';
+    } else if (assigned.length === 1) {
+      turnEl.querySelector('.bubble--hufi').textContent = 'Der Auftrag ist verteilt. Die Arbeit beginnt jetzt.';
+    }
     trackMission(mission.id, turnEl);
   }
 
@@ -456,8 +471,9 @@
   // steps, no UUIDs/status codes) for the normal in-progress path. Stage 1
   // is "done" the moment we're tracking a mission at all (it already
   // exists); stage 2/3 reflect the real, current mission.status.
-  function progressChecklistHtml(taskCount, status) {
-    const workLabel = taskCount > 1 ? `${taskCount} Agenten arbeiten daran` : 'Hufi arbeitet daran';
+  function progressChecklistHtml(tasks, status) {
+    const activeCount = tasks.filter((task) => ['planning', 'running', 'retrying', 'review'].includes(task.status)).length;
+    const workLabel = activeCount > 1 ? `${activeCount} Agenten arbeiten daran` : activeCount === 1 ? 'Ein Agent arbeitet daran' : 'Aufgaben sind eingeplant';
     const stage2 = status === 'review' ? 'done' : 'current';
     const stage3 = status === 'review' ? 'current' : 'pending';
     const mark = { done: '✓', current: '●', pending: '○' };
@@ -476,6 +492,7 @@
     const progressEl = turnEl.querySelector('.progress-lines');
     const approvalSlot = turnEl.querySelector('.approval-slot');
     const resultSlot = turnEl.querySelector('.result-slot');
+    const liveSlot = turnEl.querySelector('.live-workforce-slot');
     let lastHtml = null;
     let timer = null;
     let stopped = false;
@@ -488,14 +505,17 @@
 
     async function tick() {
       if (stopped) return;
-      let mission, tasks;
+      let mission, tasks, execution;
       try {
         mission = await Hufi.api(`/missions/${encodeURIComponent(missionId)}`);
         tasks = await Hufi.api(`/tasks?mission_id=${encodeURIComponent(missionId)}`).catch(() => []);
+        execution = await Hufi.api(`/missions/${encodeURIComponent(missionId)}/execution?mode=live&limit=20`).catch(() => null);
       } catch (error) {
         return; // transient network hiccup — keep polling silently
       }
       if (stopped) return;
+
+      if (execution) renderLiveWorkforce(liveSlot, execution);
 
       if (mission.status === 'waiting_approval') {
         setProgress(`<div class="progress-line" data-fade-in>${esc(statusLine(mission, tasks.length))}</div>`);
@@ -503,7 +523,7 @@
       } else if (['blocked', 'retrying'].includes(mission.status)) {
         setProgress(`<div class="progress-line" data-fade-in>${esc(statusLine(mission, tasks.length))}</div>`);
       } else if (!TERMINAL_STATUSES.includes(mission.status)) {
-        setProgress(progressChecklistHtml(tasks.length, mission.status));
+        setProgress(progressChecklistHtml(tasks, mission.status));
       }
 
       if (TERMINAL_STATUSES.includes(mission.status)) {
@@ -518,6 +538,30 @@
     state.missions.set(missionId, { turnEl });
     tick();
     timer = setInterval(tick, POLL_MS);
+  }
+
+  function renderLiveWorkforce(container, execution) {
+    const working = new Set(['running', 'planning', 'retrying', 'review']);
+    const agents = execution.agents || [];
+    const evidence = (execution.recent_evidence || []).slice(-4).reverse();
+    container.innerHTML = `<section class="live-workforce" aria-label="Live-Firmenaktivität">
+      <div class="live-workforce__agents">${agents.map((agent) => {
+        const active = working.has(String(agent.status));
+        return `<button type="button" class="live-worker" data-agent-id="${esc(agent.agent_id)}">
+          <span class="live-worker__indicator ${active ? 'is-working' : ''}" aria-hidden="true">${active ? '⚙' : '○'}</span>
+          <span><strong>${esc(agent.agent_id.replace(/_/g, ' '))}</strong><small>${esc(agent.current_activity || `Aufgabe ${agent.status}`)}</small></span>
+          <span class="live-worker__status">${esc(String(agent.status).toUpperCase())}</span>
+        </button>`;
+      }).join('')}</div>
+      ${evidence.length ? `<div class="live-workforce__feed"><strong>Letzte Aktivität</strong>${evidence.map((item) => `<div>${esc(Hufi.fmtTime(item.created_at))} · ${esc(item.summary)}</div>`).join('')}</div>` : ''}
+    </section>`;
+    container.querySelectorAll('[data-agent-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const id = button.dataset.agentId;
+        const agent = Hufi.agents && Hufi.agents.getById(id);
+        if (agent && Hufi.agents.openAgentWorkspace) Hufi.agents.openAgentWorkspace(agent);
+      });
+    });
   }
 
   async function ensureApprovalCard(missionId, tasks, approvalSlot, turnEl) {
@@ -608,7 +652,7 @@
     const title = isFailed ? 'Nicht geschafft' : isCancelled ? 'Abgebrochen' : 'Fertig';
     const mark = isFailed ? '✕' : isCancelled ? '○' : '✓';
     const tone = isFailed ? 'bad' : isCancelled ? 'idle' : 'ok';
-    const raw = (mission.result || '').trim();
+    const raw = visibleRedact((mission.result || '').trim());
     const fallback = isFailed
       ? 'Es ist ein Fehler aufgetreten. Details siehe unten.'
       : isCancelled

@@ -116,7 +116,9 @@ def test_large_dogfood_owner_request(client):
     assert tasks_resp.status_code == 200
     tasks = tasks_resp.json()
     assert len(tasks) == 1
-    assert tasks[0]["objective"] == large_prompt
+    from hufiagents.redaction import redact
+
+    assert tasks[0]["objective"] == redact(large_prompt)
 
 
 def test_end_to_end_owner_frontdoor_mission_execution(client):

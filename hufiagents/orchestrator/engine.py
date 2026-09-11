@@ -4,7 +4,8 @@ import json
 from datetime import timedelta
 
 from hufiagents.browser_worker import BrowserWorker
-from hufiagents.contracts import Handoff, MemoryRecord, State, now
+from hufiagents.contracts import Handoff, MemoryRecord, State, WorkArtifact, now
+from hufiagents.corporate_router import CorporateRouter
 from hufiagents.knowledge import KnowledgeService
 from hufiagents.orchestrator.planner import Planner
 from hufiagents.orchestrator.registry import AgentRegistry
@@ -65,7 +66,17 @@ class Orchestrator:
             from hufiagents.orchestrator.planner import MissionCreate
 
             request = MissionCreate.model_validate(request)
+        request = request.model_copy(
+            update={"outcome": redact(request.outcome), "constraints": redact(request.constraints)}
+        )
+        request, outcome_contract, route = CorporateRouter.prepare_request(request, self.store)
         mission, tasks = self.planner.plan(request)
+        outcome_contract.mission_id = mission.id
+        mission.constraints = {
+            **mission.constraints,
+            "owner_outcome_contract_id": outcome_contract.id,
+            "corporate_route": route,
+        }
         # Validate paths and any explicit agent request before persisting or
         # dispatching a task, so a bad request fails at submit time (409) and
         # never reaches a background executor.
@@ -85,7 +96,16 @@ class Orchestrator:
             if len(pending) + len(tasks) > self.settings.max_pending_tasks:
                 raise OverflowError("task queue at capacity")
             tx.missions.add(mission)
+            tx.owner_outcome_contracts.add(outcome_contract)
             tx.log("mission_created", mission_id=mission.id)
+            tx.log("planning_started", mission_id=mission.id, summary="HufiBoss plant den Auftrag")
+            tx.log(
+                "unit_selected",
+                mission_id=mission.id,
+                unit_id=route["selected_unit_id"],
+                summary=f"{route['target_unit']} ausgewählt",
+                reason=route["reason"],
+            )
             for task, operations in tasks:
                 tx.tasks.add(task)
                 tx.task_context.add(
@@ -96,6 +116,14 @@ class Orchestrator:
                     )
                 )
                 tx.log("task_created", task=task, dependencies=task.dependencies)
+                tx.log(
+                    "agent_dispatch_persisted",
+                    task=task,
+                    actor="mr_equi",
+                    agent_id=task.assigned_agent_id,
+                    unit_id=route["selected_unit_id"],
+                    summary=f"{task.assigned_agent_id} wurde verbindlich zugewiesen",
+                )
                 if task.project_id:
                     project = self.projects.get(task.project_id)
                     tx.log(
@@ -107,6 +135,22 @@ class Orchestrator:
                         default_branch=project.default_branch,
                         dry_run=task.dry_run,
                     )
+            for supplied in mission.constraints.get("input_artifacts", []):
+                name = (
+                    supplied.get("name", "Owner input")
+                    if isinstance(supplied, dict)
+                    else str(supplied)
+                )
+                tx.work_artifacts.add(
+                    WorkArtifact(
+                        mission_id=mission.id,
+                        name=redact(name),
+                        artifact_ref=redact(
+                            supplied.get("artifact_ref") if isinstance(supplied, dict) else None
+                        ),
+                        origin="OWNER_INPUT",
+                    )
+                )
         return mission
 
     async def start(self):
@@ -189,35 +233,37 @@ class Orchestrator:
         ``room_id`` constraint get their result posted as a system message in
         that room.  The ``_room_notified`` set ensures each mission posts once.
         """
-        try:
-            with self.store.transaction() as tx:
-                terminal_missions = tx.missions.list(
-                    status=[State.completed, State.failed, State.cancelled],
-                    limit=200,
-                )
-            for mission in terminal_missions:
-                if mission.id in self._room_notified:
-                    continue
-                constraints = mission.constraints or {}
-                if not constraints.get("room_id"):
-                    self._room_notified.add(mission.id)
-                    continue
-                try:
-                    status_str = (
-                        mission.status.value
-                        if hasattr(mission.status, "value")
-                        else str(mission.status)
-                    )
-                    self.room_service.notify_mission_outcome(
-                        mission_id=mission.id,
-                        status=status_str,
-                        result=mission.result or "",
-                    )
-                except Exception:
-                    pass  # never let room notification crash the scheduler
+        with self.store.transaction() as tx:
+            terminal_missions = tx.missions.list(
+                status=[State.completed, State.failed, State.cancelled],
+                limit=200,
+            )
+        for mission in terminal_missions:
+            if mission.id in self._room_notified:
+                continue
+            constraints = mission.constraints or {}
+            if not constraints.get("room_id"):
                 self._room_notified.add(mission.id)
-        except Exception:
-            pass  # never let this scan crash the tick loop
+                continue
+            try:
+                status_str = (
+                    mission.status.value
+                    if hasattr(mission.status, "value")
+                    else str(mission.status)
+                )
+                self.room_service.notify_mission_outcome(
+                    mission_id=mission.id,
+                    status=status_str,
+                    result=mission.result or "",
+                )
+            except Exception as exc:
+                with self.store.transaction() as tx:
+                    tx.log(
+                        "room_notification_failed",
+                        mission_id=mission.id,
+                        error=type(exc).__name__,
+                    )
+            self._room_notified.add(mission.id)
 
     async def _heartbeat(self, identifier):
         while True:
@@ -243,7 +289,7 @@ class Orchestrator:
                 async with asyncio.timeout(task.budget_seconds or 300):
                     await self._execute(identifier)
             except ApprovalPending:
-                pass
+                return
             except asyncio.CancelledError:
                 # Shutdown leaves a durable checkpoint for the stale reaper; explicit API
                 # cancellation has already committed its terminal state before interrupting us.
@@ -325,8 +371,13 @@ class Orchestrator:
                                     selected_count=len(repo_ctx.get("selected_files", [])),
                                     truncated=repo_ctx.get("truncated", False),
                                 )
-                    except Exception:
-                        pass
+                    except Exception as exc:
+                        with self.store.transaction() as tx:
+                            tx.log(
+                                "repo_context_failed",
+                                task=task,
+                                error=type(exc).__name__,
+                            )
 
                 # Assemble authorized knowledge scopes
                 scopes = [("agent", agent.id if agent else "builder"), ("global", None)]

@@ -6,7 +6,15 @@ from typing import Protocol, TypeVar
 from sqlalchemy import create_engine, event, insert, select, update
 from sqlalchemy.pool import StaticPool
 
-from hufiagents.contracts import AuditEvent, Contract, State, WorkEvidence, now
+from hufiagents.contracts import (
+    AuditEvent,
+    Contract,
+    State,
+    WorkArtifact,
+    WorkEvidence,
+    WorkforceEvent,
+    now,
+)
 from hufiagents.orchestrator.state import TERMINAL, validate_transition
 from hufiagents.persistence.schema import MODELS, TABLES
 from hufiagents.redaction import redact
@@ -36,7 +44,7 @@ class Rows:
             raise KeyError(identifier)
         return rows[0]
 
-    def list(self, *, limit=100, offset=0, **filters):
+    def list(self, *, limit=100, offset=0, descending=False, **filters):
         query = select(self.table)
         for field, value in filters.items():
             column = self.table.c[field]
@@ -47,9 +55,10 @@ class Rows:
             "created_at",
             self.table.c.get("requested_at", self.table.c.get("ts", self.table.c.id)),
         )
-        rows = self.connection.execute(
-            query.order_by(order, self.table.c.id).limit(limit).offset(offset)
+        ordering = (
+            (order.desc(), self.table.c.id.desc()) if descending else (order, self.table.c.id)
         )
+        rows = self.connection.execute(query.order_by(*ordering).limit(limit).offset(offset))
         return [self.model.model_validate(dict(row)) for row in rows.mappings()]
 
     def add(self, record):
@@ -115,23 +124,74 @@ class UnitOfWork:
         self.evidence = self.work_evidence
 
     def log(self, event_type, *, task=None, mission_id=None, actor="system", **detail):
-        self.audit.append(
+        safe_detail = redact(detail)
+        event = self.audit.append(
             AuditEvent(
                 event_type=event_type,
                 actor=actor,
                 mission_id=task.mission_id if task else mission_id,
                 task_id=task.id if task else None,
-                detail=detail,
+                detail=safe_detail,
             )
         )
-        try:
-            from hufiagents.evidence import EvidenceCollector
+        self._project_workforce_event(event, task, safe_detail)
+        from hufiagents.evidence import EvidenceCollector
 
-            EvidenceCollector.process_event(
-                self, event_type, task=task, mission_id=mission_id, actor=actor, detail=detail
+        EvidenceCollector.process_event(
+            self, event_type, task=task, mission_id=mission_id, actor=actor, detail=safe_detail
+        )
+        return event
+
+    def _project_workforce_event(self, event, task, detail):
+        event_names = {
+            "mission_created": "MISSION_ACCEPTED",
+            "planning_started": "PLANNING_STARTED",
+            "unit_selected": "UNIT_SELECTED",
+            "agent_dispatch_persisted": "AGENT_ASSIGNED",
+            "agent_assigned": "AGENT_ASSIGNED",
+            "tool_started": "TOOL_STARTED",
+            "tool_result": "TOOL_COMPLETED",
+            "artifact_created": "ARTIFACT_CREATED",
+            "message_sent": "MESSAGE_SENT",
+            "handoff": "HANDOFF",
+            "review_requested": "REVIEW_REQUESTED",
+            "review": "REVIEW_COMPLETED",
+            "approval_requested": "APPROVAL_REQUIRED",
+            "policy_blocked": "BLOCKED",
+            "error": "ERROR",
+            "executor_error": "ERROR",
+            "outcome_completed": "OUTCOME_COMPLETED",
+        }
+        projected = event_names.get(event.event_type)
+        if event.event_type == "state_transition":
+            projected = {
+                "running": "TASK_STARTED",
+                "review": "REVIEW_STARTED",
+                "retrying": "RETRY",
+                "blocked": "BLOCKED",
+                "completed": "TASK_COMPLETED",
+                "failed": "ERROR",
+            }.get(str(detail.get("target")))
+        if not projected:
+            return
+        summary = (
+            detail.get("summary") or detail.get("reason") or projected.replace("_", " ").title()
+        )
+        self.workforce_events.add(
+            WorkforceEvent(
+                timestamp=event.ts,
+                agent_id=(task.assigned_agent_id if task else None) or detail.get("agent_id"),
+                unit_id=detail.get("unit_id"),
+                mission_id=event.mission_id,
+                task_id=event.task_id,
+                event_type=projected,
+                safe_summary=redact(str(summary)),
+                artifact_ref=redact(detail.get("artifact_ref")),
+                status=str(detail.get("target") or detail.get("status") or "") or None,
+                severity="error" if projected == "ERROR" else None,
+                metadata=safe_detail_without_summary(detail),
             )
-        except Exception:
-            pass
+        )
 
     def transition(self, task, target, *, recovery=False, cancel=False, reason=""):
         validate_transition(task.status, target, recovery=recovery, cancel=cancel)
@@ -140,6 +200,28 @@ class UnitOfWork:
             reviews = self.reviews.list(task_id=task.id, limit=100)
             if not reviews or reviews[-1].verdict != "approve":
                 raise ValueError("completion requires reviewer approval")
+            if task.deliverable_key and not self.work_artifacts.list(
+                task_id=task.id, deliverable_key=task.deliverable_key, limit=1
+            ):
+                artifact = self.work_artifacts.add(
+                    WorkArtifact(
+                        mission_id=task.mission_id,
+                        task_id=task.id,
+                        agent_id=task.assigned_agent_id,
+                        deliverable_key=task.deliverable_key,
+                        name=task.expected_output,
+                        artifact_ref=task.expected_output,
+                        origin="AGENT_GENERATED",
+                    )
+                )
+                self.log(
+                    "artifact_created",
+                    task=task,
+                    actor=task.assigned_agent_id or "system",
+                    artifact_id=artifact.id,
+                    artifact_ref=artifact.artifact_ref,
+                    deliverable_key=artifact.deliverable_key,
+                )
         if target == State.queued and previous == State.retrying:
             if task.retry_count >= task.retry_limit:
                 raise ValueError("retry budget exhausted")
@@ -160,7 +242,57 @@ class UnitOfWork:
         mission = self.missions.get(mission_id)
         tasks = self.tasks.list(mission_id=mission_id, limit=10000)
         states = {task.status for task in tasks}
-        if states == {State.completed}:
+        contracts = self.owner_outcome_contracts.list(mission_id=mission_id, limit=1)
+        contract = contracts[0] if contracts else None
+        if states == {State.completed} and contract:
+            artifacts = self.work_artifacts.list(mission_id=mission_id, limit=1000)
+            generated = [
+                item for item in artifacts if item.origin in {"AGENT_GENERATED", "TOOL_GENERATED"}
+            ]
+            deliverables = {item.deliverable_key for item in generated}
+            workstreams = {task.workstream_key for task in tasks}
+            roles = {task.assigned_agent_id for task in tasks}
+            reviews = self.reviews.list(limit=1000)
+            task_by_id = {task.id: task for task in tasks}
+            independent_reviews = [
+                review
+                for review in reviews
+                if review.task_id in task_by_id
+                and review.verdict == "approve"
+                and review.reviewer_agent_id != task_by_id[review.task_id].assigned_agent_id
+            ]
+            evidence = self.work_evidence.list(mission_id=mission_id, limit=1000)
+            evidenced_tasks = {item.task_id for item in evidence if item.task_id}
+            conditions_met = (
+                set(contract.required_deliverables) <= deliverables
+                and set(contract.required_workstreams) <= workstreams
+                and set(contract.required_roles) <= roles
+                and len(independent_reviews) >= len(tasks)
+                and {task.id for task in tasks} <= evidenced_tasks
+            )
+            if conditions_met:
+                status = State.completed
+                contract.status = "COMPLETED"
+                contract.completed_at = now()
+                from hufiagents.corporate_router import CorporateRouter
+
+                mission.result = CorporateRouter.format_management_summary(
+                    mission.outcome,
+                    generated,
+                    mission.constraints.get("corporate_route", {}),
+                    {
+                        "tasks": len(tasks),
+                        "artifacts": len(generated),
+                        "evidence": len(evidence),
+                        "reviews": len(independent_reviews),
+                    },
+                )
+            else:
+                status = State.blocked
+                contract.status = "PARTIAL"
+            contract.updated_at = now()
+            self.owner_outcome_contracts.save(contract)
+        elif states == {State.completed}:
             status = State.completed
             mission.result = "\n\n".join(task.result or "" for task in tasks)
         else:
@@ -182,6 +314,20 @@ class UnitOfWork:
                 ),
                 State.queued,
             )
+            if contract:
+                contract.status = {
+                    State.queued: "DISPATCHING",
+                    State.planning: "PLANNING",
+                    State.running: "RUNNING",
+                    State.waiting_approval: "WAITING_APPROVAL",
+                    State.blocked: "WAITING",
+                    State.review: "REVIEWING",
+                    State.retrying: "RUNNING",
+                    State.failed: "FAILED",
+                    State.cancelled: "FAILED",
+                }.get(status, "RUNNING")
+                contract.updated_at = now()
+                self.owner_outcome_contracts.save(contract)
         if mission.status != status:
             self.log(
                 "state_transition",
@@ -194,6 +340,14 @@ class UnitOfWork:
             if status in TERMINAL:
                 mission.completed_at = now()
             self.missions.save(mission)
+            if status == State.completed:
+                self.log(
+                    "outcome_completed", mission_id=mission_id, summary="Owner outcome completed"
+                )
+
+
+def safe_detail_without_summary(detail):
+    return redact({key: value for key, value in detail.items() if key != "summary"})
 
 
 class Store:
@@ -272,6 +426,11 @@ class Store:
                     "hufiagents.persistence.migrations.011_v1_3_memory_skills_runtime"
                 ).apply(connection)
                 connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (11)")
+            if 12 not in versions:
+                importlib.import_module(
+                    "hufiagents.persistence.migrations.012_v1_4a_corporate_matrix"
+                ).apply(connection)
+                connection.exec_driver_sql("INSERT INTO schema_migrations VALUES (12)")
 
     @contextmanager
     def transaction(self):

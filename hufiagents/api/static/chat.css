@@ -144,6 +144,41 @@
 .progress-step--current .progress-step__mark { color: var(--accent); animation: hufiPulse 1.4s ease-in-out infinite; }
 .progress-step--pending .progress-step__mark { color: var(--text-faint); }
 
+.live-workforce {
+  align-self: stretch;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: var(--space-3);
+}
+.live-workforce__agents { display: grid; gap: var(--space-2); }
+.live-worker {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.live-worker small { display: block; color: var(--text-muted); }
+.live-worker__indicator.is-working { color: var(--accent); animation: hufiSpin 1.8s linear infinite; }
+.live-worker__status { color: var(--text-muted); font-size: .72rem; }
+.live-workforce__feed { margin-top: var(--space-3); color: var(--text-muted); font-size: .8rem; }
+.live-workforce__feed strong, .live-workforce__feed div { display: block; margin-top: var(--space-1); }
+@keyframes hufiSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .live-worker__indicator.is-working,
+  .progress-line::before,
+  .progress-step--current .progress-step__mark { animation: none; }
+}
+
 .details-toggle {
   align-self: flex-start;
   background: none;
