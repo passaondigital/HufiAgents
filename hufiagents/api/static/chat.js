@@ -387,7 +387,7 @@
         <div class="result-slot"></div>
       </div>
     `);
-    turnEl.querySelector('.bubble--user').textContent = text;
+    turnEl.querySelector('.bubble--user').textContent = visibleRedact(text);
     listEl.appendChild(turnEl);
     scrollToBottom();
 
