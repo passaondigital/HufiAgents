@@ -1,34 +1,104 @@
 # 00A - HufiAgents CURRENT STATE - KI START HERE - Source of Truth
 
+**Stand:** 22.09.2026
+
 ## Current Production State
 
-Production release:
+Last verified production release:
+
 **v1.4.0**
 
-Production SHA:
+Production release SHA:
+
 **8dca1f70fd4a840feae3e47d047d2db1eafc82e6**
 
 Production URL:
+
 https://agents.heyhufi.com
 
-PRs Merged in V1.4.0:
-- PR #39 (Hufi Corporate Matrix & Live Workforce)
-- PR #40 (Hotfix: User bubble text redaction in chat.js)
-- PR #41 (Release metadata: Bump package version to 1.4.0)
+Repository:
+
+`passaondigital/HufiAgents`
+
+GitHub documentation baseline before this docs-only update:
+
+`44b801fbe69b810e55e08ff982232301778b22bf`
+
+No newer repository commit than the 11.09.2026 v1.4.0 release-documentation commit was found during the 22.09.2026 status reconciliation.
+
+> Important: this 22.09 update is a documentation reconciliation. No fresh production runtime probe was performed as part of this update. Runtime claims below therefore refer to the last verified v1.4.0 production acceptance on 11.09.2026 unless explicitly stated otherwise.
 
 ## Verified V1.4.0 Capabilities
 
-- **Corporate Matrix**: REAL (`OrganizationUnit` hierarchy `GROUP` → `COMPANY` → `BUSINESS_UNIT` → `DEPARTMENT` → `TEAM`, `GraphRelationship` edge model, Migration 012)
-- **Mr. Equi Routing**: REAL (`CorporateRouter` deterministic routing without LLM in routing path)
-- **Owner Outcome Contracts**: REAL (gated completion requiring generated deliverables, independent reviewer approvals, and work evidence)
-- **Live Workforce Telemetry**: REAL (`/company/live`, `/company/pulse`, `/company/workforce` derived strictly from persisted runtime state)
-- **Agent Workspace**: REAL (current activity, tasks, timeline, artifacts, evidence, handoffs)
-- **Unit Workspace**: REAL (workers, tasks, artifacts, events, blockers/reviews)
-- **Secret Redaction**: REAL (structured redaction across UI, API, audit logs, and evidence)
-- **Test Suite**: 508 / 508 tests PASS
-- **Visual Acceptance**: PASS (desktop 1366x768 & mobile 390x844)
-- **Production Smoke**: PASS
+- **Corporate Matrix**: REAL / last verified PRODUKTIV
+- **Mr. Equi Routing / CorporateRouter**: REAL
+- **Owner Outcome Contracts**: REAL
+- **Live Workforce Telemetry**: REAL
+- **Agent Workspace**: REAL
+- **Unit Workspace**: REAL
+- **Secret Redaction**: REAL
+- **Database Migration 012**: verified during v1.4.0 release
+- **Test Suite**: 508 / 508 PASS at release
+- **Ruff / Format / Secret Scan**: PASS at release
+- **Real Browser Visual Acceptance**: PASS at release on desktop 1366×768 and mobile 390×844
+- **Production Smoke**: PASS at release
+
+## V1.4.0 Traceability
+
+Merged release PRs:
+
+- PR #39 — Hufi Corporate Matrix & Live Workforce
+- PR #40 — User-bubble text redaction hotfix
+- PR #41 — v1.4.0 release metadata/version bump
+
+Release record:
+
+`docs/releases/V1_4_0_PRODUCTION_RELEASE.md`
 
 ## Known Limitations / Deferred Items
 
-- Multilingual intent matching → deferred to V1.4B.
+Unless a newer runtime/repo proof supersedes them:
+
+- multilingual intent matching remains deferred to V1.4B,
+- Learning/Skill promotion still requires manual approval,
+- Memory relevance remains deterministic / word-overlap rather than semantic/vector retrieval,
+- active Chromium browser tabs do not survive a full application restart,
+- a durable fully encrypted credential vault remains open.
+
+## Product Rule
+
+HufiAgents is the workforce/capability engine below HufiBoss.
+
+Owner intent should flow:
+
+`Pascal → HufiBoss → HufiAgents → Units / Teams / Agents → Evidence / Review → Result`
+
+The system must continue to prefer:
+
+- real work over simulated activity,
+- evidence over reassuring text,
+- minimum necessary agent fan-out,
+- local-first/model-agnostic execution,
+- explicit approval only for genuinely risky actions.
+
+## Next Focus
+
+Do not restart broad architecture work without evidence of need.
+
+Use v1.4.0 in real work, collect failures/latency/UX evidence, and derive V1.4B from actual operational gaps.
+
+## Naming
+
+“AgentHufi” may be used conversationally for the public/agent product direction, but the currently verified GitHub implementation and production system documented here is **HufiAgents**.
+
+## Source-of-Truth Rule
+
+Priority:
+
+1. fresh runtime evidence,
+2. current production release record,
+3. `docs/CURRENT_STATE.md`,
+4. current code/tests,
+5. older Drive/README/roadmap documents.
+
+Never put real credentials, customer data, private keys or production secrets into Git.
